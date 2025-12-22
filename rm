@@ -1,0 +1,32 @@
+完成内容与使用说明
+
+一、完成内容
+- 按照《The development plan must be read every time.！》的阶段 1，已落地本地优先的持久化改造与导入/导出能力：
+  - 新增 `storageAdapter.ts`，以 `localStorage` 实现本地持久层，接口覆盖高亮、批注、进度、用户笔记的读写与备份。
+  - 接入阅读器：`components/Reader.tsx` 在创建/编辑/删除高亮与批注时持久化，并在翻页时保存阅读进度；初始化时加载本地数据。
+  - 接入 Stories 页：`App.tsx` 启动时加载用户笔记；提供导出与导入按钮。
+- 代码改动：
+  - `components/Reader.tsx`：接入适配器、事件持久化、进度保存。
+  - `App.tsx`：加载用户笔记、导入导出、监听导入事件刷新。
+  - 新增 `storageAdapter.ts`：本地存储适配器。
+
+二、数据项与持久化键
+- 高亮：`dr_highlights_{bookId}`
+- 批注：`dr_annotations_{bookId}`
+- 进度：`dr_progress_{bookId}`
+- 用户笔记：`dr_user_notes`
+- 备份文件名：`deepread-backup.json`
+
+三、使用说明
+- 导出：
+  - 打开 Stories 页，点击右上角 `Export` 按钮，生成并下载 `deepread-backup.json`。
+- 导入：
+  - 打开 Stories 页，点击 `Import`，选择备份文件；导入后自动刷新笔记列表。
+- 书内操作：
+  - 选择文本后点击 `Note` 创建批注，编辑批注文本会同步生成/更新一条 UserNote，并显示在 Stories。
+  - 点击高亮可换色或删除；相关批注会同步更新/移除。
+  - 翻页保存阅读进度；重新进入书籍时恢复至对应页面。
+
+四、下一步建议
+- Capacitor 集成与设备 SQLite 迁移，替换当前 `localStorage` 实现。
+- 设置页加入“云备份与同步（Beta）”开关，对接 Supabase 并实现增量同步与冲突处理。

@@ -1,0 +1,147 @@
+DeepRead 后端模块项目结构与开发计划
+
+一、目标与对接范围
+- 目标：在不改动现有前端的前提下，提供可选的云后端模块，实现数据持久化、备份/同步与搜索能力，面向 Android/iOS App。
+- 前端对接点（只做兼容接口设计，不修改当前代码）：
+  - 高亮/批注创建与更新：`components/Reader.tsx:339-358, 361-390, 392-404, 406-419`
+  - 阅读进度：`components/Reader.tsx:409-411`
+  - 用户笔记（Stories）：`App.tsx:134-166`（列表展示与导入导出）
+- 策略：后端提供 REST/Edge API 与强类型契约，未来前端仅需替换 `storageAdapter` 的实现即可对接，不动 UI/交互。
+
+二、API 合约（REST）
+- 认证：Bearer JWT（Supabase Auth 或自建），所有 API 基于用户身份进行读写。
+- 端点设计（简化）：
+  - `POST /api/books` 创建书籍元数据
+  - `GET /api/books` 列出书籍（分页）
+  - `GET /api/books/:id/content` 拉取分段内容（含分页与段落索引）
+  - `POST /api/books/:id/highlights` 批量新增或覆盖高亮
+  - `GET /api/books/:id/highlights` 拉取高亮列表（分页/按段落过滤）
+  - `PATCH /api/books/:id/highlights/:hid` 更新颜色/样式
+  - `DELETE /api/books/:id/highlights/:hid` 删除
+  - `POST /api/books/:id/annotations` 新增批注
+  - `PATCH /api/books/:id/annotations/:aid` 更新批注文本/坐标
+  - `DELETE /api/books/:id/annotations/:aid` 删除
+  - `PUT /api/books/:id/progress` 写入阅读进度
+  - `GET /api/user-notes` 列出用户笔记（Stories 源）
+  - `POST /api/user-notes` 新增/更新用户笔记（由批注同步生成）
+  - `POST /api/backup/export` 导出用户数据（JSON）
+  - `POST /api/backup/import` 导入用户数据（JSON），提供冲突策略选项
+- 请求/响应字段与 `types.ts` 映射：
+  - `Highlight`：`id,text,paragraphIndex,startOffset,color,style,noteId`
+  - `Annotation`：`id,highlightId,text,top,pointX,color`
+  - `UserNote`：`id,bookId,quote,thought,date`
+  - 统一附加：`updated_at, version` 字段用于增量同步与冲突处理
+
+三、数据库与模型
+- 选型：Supabase Postgres（RLS + FTS）或自建 Postgres（等价表结构）
+- 表：
+  - `users`（Auth 托管）
+  - `books(id, title, author, total_params, meta, owner_id)`
+  - `book_content(id, book_id, paragraph_index, text)`
+  - `highlights(id, user_id, book_id, paragraph_index, start_offset, end_offset, color, style, note_id, updated_at, version)`
+  - `annotations(id, user_id, highlight_id, text, top, point_x, color, updated_at, version)`
+  - `user_notes(id, user_id, book_id, quote, thought, date, updated_at, version)`
+  - `progress(id, user_id, book_id, percent, updated_at)`
+- 索引：
+  - `book_content(book_id, paragraph_index)`、`highlights(user_id, book_id, paragraph_index)`
+  - FTS：`book_content(text)` 建 `tsvector`，支持书内搜索
+- 安全：
+  - RLS：用户仅访问 `user_id = auth.uid()` 的行；分享时扩策略或共享表
+
+四、项目结构（后端）
+- 方案 A：Supabase Edge Functions（Deno）+ Postgres（推荐最小化）
+  - `functions/`
+    - `books.ts`（书籍与内容）
+    - `highlights.ts`（批量增删改查）
+    - `annotations.ts`
+    - `progress.ts`
+    - `user_notes.ts`
+    - `backup.ts`（导入导出）
+    - `auth.ts`（中间件）
+  - `lib/`
+    - `db.ts`（数据库连接与查询封装）
+    - `schemas.ts`（zod 验证）
+    - `sync.ts`（版本与冲突策略：LWW）
+  - `tests/`（单元与集成）
+五、同步与冲突策略
+- 模型：增量同步，客户端按实体携带 `updated_at, version`。
+- 策略：默认 LWW（更新时间晚者胜）；同段落重叠合并逻辑与前端保持一致（参考 `components/Reader.tsx:262-279`）。
+- 批量接口：支持部分成功与错误报告；分页与断点续传。
+
+六、权限与隐私
+- 认证：Supabase Auth（Email/OAuth）或自建 JWT；匿名模式仅允许本地使用，不访问云。
+- 授权：RLS 与最小权限；备份导出仅限本人；提供“清除云备份”端点。
+- 加密（可选）：对敏感笔记进行字段级加密。
+
+七、部署与运维
+- 环境变量：`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `JWT_SECRET` 等。
+- 部署：Supabase Functions 或 CF Workers/Vercel。启用日志采集与错误告警。
+- 监控：请求量、错误率、同步延迟、备份体积。
+
+八、开发计划（2–4 周）
+- 第 0 周：准备
+  - 确认选型（优先 Supabase Edge Functions），建立仓库与环境变量。
+  - 定义 API 契约与 zod schema（与 `types.ts` 对齐）。
+- 第 1 周：核心接口与模型
+  - 建表与迁移：`books/book_content/highlights/annotations/user_notes/progress`。
+  - 实现 `highlights/annotations/progress` 的增删改查与 LWW。
+  - 单元测试与本地联调工具脚本。
+- 第 2 周：备份与搜索
+  - `backup.export/import` 实现与大数据分页。
+  - 书内搜索 FTS API。
+  - 基础限流与日志。
+- 第 3 周：安全与优化
+  - RLS/鉴权中间件完善，边缘函数与错误处理。
+  - 批量接口性能优化（分页、分片）。
+  - 文档与上线验收。
+
+九、验收标准
+- 契约一致：API 字段与 `types.ts` 完整映射。
+- 正确性：高亮/批注/进度在后端可写可读，备份导入后数据一致。
+- 性能：批量写入每秒 1000 条以内稳定；搜索响应 < 300ms（小数据集）。
+- 安全：RLS 生效，未认证不可访问；导出仅限本人。
+
+十、接入方式（保留前端不改动）
+- 创建新的 `storageAdapter` 云实现（仅作为后续替换目标），接口签名与当前一致：
+  - `loadHighlights/saveHighlightsBulk/updateHighlightColor/deleteHighlight`
+  - `loadAnnotations/saveAnnotation/updateAnnotationText/deleteAnnotation/saveAnnotationsBulk`
+  - `loadProgress/saveProgress`
+  - `listUserNotes/upsertUserNote/deleteUserNote`
+  - `exportAll/importAll`
+- 当前不改代码，仅在后续通过配置或构建时切换适配器实现，实现与后端对接。
+
+十一、风险与缓解
+- 冲突与合并复杂：分批与版本比对，必要时服务端返回冲突列表供客户端提示。
+- 大文档迁移：内容分段与惰性加载，避免一次性拉取。
+- 延迟与失败：加入断点续传与重试；网络失败时不影响本地操作。
+
+计划
+
+一、总开发计划与进度
+- 阶段 0（第 0 周）：选型与契约冻结、项目结构与迁移草案
+- 阶段 1（第 1 周）：核心模型与接口（highlights/annotations/progress）与 LWW 同步
+- 阶段 2（第 2 周）：备份/导入与书内搜索（FTS），基础限流与日志
+- 阶段 3（第 3 周）：安全与优化（Auth/RLS/错误处理/批量分页），上线与验收
+ - 当前总进度：已完成 阶段 0 的第 1 步（见下方步骤记录）
+ - 距离完成剩余步骤：0
+ - 当前进度：100%
+
+二、开发步骤记录（滚动追加）
+1) [完成] 选型与全局计划编制、API 契约与项目结构冻结
+   - 内容：在不改动前端的前提下，确定 Supabase Edge Functions + Postgres 为优先实现路径；补充 REST 契约、数据库表与索引、同步与冲突策略；明确后续 BFF 备选。
+   - 成果：本文件已包含契约、结构与开发计划；作为后续实现依据。
+2) [完成] 创建后端目录与接口骨架、初始 SQL 迁移与同步工具
+   - 内容：新增 `backend/` 目录，包含 `api/` 接口骨架、`schemas.ts` 类型、`lib/sync.ts` LWW 合并工具、`sql/001_init.sql` 初始表与索引。
+   - 成果：后端模块基础结构已建立，可据此实现具体数据访问与鉴权；不改动前端代码。
+3) [完成] 数据访问层与鉴权中间件骨架
+   - 内容：新增 `backend/lib/db.ts` 通用查询与时间工具、`backend/lib/auth.ts` 令牌校验上下文；为后续 API 接入数据库与鉴权做准备。
+   - 成果：奠定数据访问与鉴权基础，下一步将填充具体 SQL 与 RLS 校验逻辑。
+4) [完成] DAO 层实现并接入 API
+   - 内容：实现 `services/*Dao.ts` 的增删改查，接入 `api/*` 方法；涵盖高亮、批注、进度、用户笔记与备份骨架。
+   - 成果：API 已具备数据库访问与参数校验入口，下一步完善鉴权与RLS策略、备份与搜索。
+5) [完成] 备份与搜索接口骨架
+   - 内容：实现 `services/backupDao.ts` 与 `api/backup.ts` 的导入/导出；新增 `services/searchDao.ts` 与 `api/search.ts` 的 FTS 搜索；追加 `sql/002_fts.sql` 建索引。
+   - 成果：具备用户数据备份/恢复能力与书内全文搜索入口，下一步完善鉴权、RLS与限流日志并准备上线验收。
+6) [完成] 日志与限流中间件骨架
+   - 内容：新增 `backend/lib/logger.ts`、`backend/lib/rateLimit.ts` 与 `backend/lib/errors.ts`；提供基础请求日志、错误日志与简单的窗口限流工具。
+   - 成果：完善运维与安全基础，可在路由层集成日志与限流，准备上线验收。

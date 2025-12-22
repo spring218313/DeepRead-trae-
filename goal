@@ -1,0 +1,124 @@
+DeepRead 移动端数据持久化技术方案与开发计划
+
+一、背景与目标
+- 目标：为 Android/iOS 阅读器实现高亮、批注、绘图与阅读进度等数据的可靠持久化，并兼顾隐私、性能与可扩展性。
+- 两种路径：云端（Supabase/Postgres）与纯本地（设备 SQLite/文件系统）。本文件对比优劣并给出技术路线与开发计划。
+
+二、方案对比
+- 云端（Supabase）
+  - 优势：多端同步与备份、用户登录与分享、实时协作、强大查询（全文检索）、安全模型（RLS）、可扩展 Edge Functions。
+  - 劣势：依赖网络与服务可用性、隐私与合规要求更高、引入服务端复杂度与成本、离线需要额外缓存与冲突解决。
+- 纯本地（Android/iOS设备存储）
+  - 优势：完全离线、低延迟与高隐私、零后端成本、可用设备原生能力（OPFS/SQLite/文件系统），数据在用户掌控。
+  - 劣势：不具备多端同步与云备份、数据迁移与恢复需手动导入导出、跨平台差异处理、后续若加同步需设计冲突解决。
+
+三、结论与建议
+- 单设备、隐私优先、离线为主：优先选择纯本地存储（SQLite + 文件系统），后续可增量加入手动备份或可选云同步。
+- 多设备同步、内容分享、协作：选择云端（Supabase），并在客户端落地离线缓存与增量同步。
+- 混合策略（推荐）：以本地为主，提供可选云备份/同步模块，用户可在设置中开启。这样兼顾隐私与可扩展。
+
+四、技术方案详解
+- 纯本地方案（复用现有前端代码优先）
+  - 容器：Capacitor（将现有 Vite/React 项目打包到 Android/iOS），最大化复用 `App.tsx` 与 `components/Reader.tsx`。
+  - 存储：`@capacitor-community/sqlite`（设备原生 SQLite，支持较大数据与事务、可用 FTS5）、`@capacitor/filesystem`（附件与导入导出）、`@capacitor/preferences`（少量 KV）。
+  - 数据模型：与现有 `types.ts` 映射，表包含 `books / book_content / highlights / annotations / user_notes / progress`，关键索引 `(book_id, paragraph_index)`、`(user_id?, book_id)`（单机可不设 `user_id`）。
+  - 安全与隐私：可选应用层加密（AES-GCM，`crypto.subtle` 或原生加密库），密钥绑定到设备或用户 PIN。
+  - 搜索：SQLite FTS5 或构建前端索引（如 `lunr`）并持久化到 SQLite。
+  - 导入/导出：JSON 或 `.db` 文件；调用 `Filesystem` 插件进行备份到用户指定目录；支持分享到云盘。
+- 纯本地方案（React Native重写）
+  - 容器：Expo/React Native。
+  - 存储：`expo-sqlite` 或 `react-native-sqlite-storage`；KV 用 `@react-native-async-storage/async-storage`；附件用 `expo-file-system`。
+  - 代价：`Reader.tsx` 的 DOM Range 与选区逻辑需重写（RN 无 DOM），文本布局与高亮映射要改造，工作量较大。
+- 云端方案（Supabase）
+  - 组件：Postgres（含 FTS）、Auth、Storage、Realtime、RLS、Edge Functions（封装敏感 API，如 Gemini）。
+  - 客户端：Capacitor 或 React Native 中使用 `@supabase/supabase-js`；加离线缓存（本地 SQLite/文件）与增量同步。
+  - 权限：所有用户数据表启用 RLS，仅允许访问自身数据；共享时通过共享表或策略扩展。
+  - 同步与冲突：客户端记录变更序列（版本号/时间戳），采用 LWW 或基于段落与偏移的合并策略；复杂情况下使用服务端函数做裁决。
+
+五、技术路线（两条可选）
+- 路线 A：Capacitor + 本地 SQLite（复用 Web 代码，优先）
+  - 初始化：引入 Capacitor 到现有 Vite 项目，添加 Android/iOS 平台。
+  - 插件：安装并配置 `@capacitor-community/sqlite`、`@capacitor/filesystem`、`@capacitor/preferences`。
+  - 适配：抽象 `storageAdapter`，将 Reader 的创建/编辑/删除高亮与批注、进度更新改为调用本地 SQLite。
+  - 备份：实现导出/导入（JSON 或 `.db`），提供设置中的备份与恢复入口。
+  - 搜索：接入 FTS5 或构建前端索引。
+  - 可选云：以后追加 Supabase 备份/同步开关。
+- 路线 B：Supabase 云端 + 本地缓存
+  - 初始化：创建 Supabase 项目与表，开启 RLS；客户端集成 `@supabase/supabase-js`。
+  - 离线：在移动端用 SQLite/Filesystem 做缓存与队列；在线时进行增量同步。
+  - 边缘函数：将 Gemini 调用与共享逻辑放到 Edge Functions。
+  - Realtime：用于协作与同步 UI 更新。
+
+六、开发计划（以路线 A 为例，2–4 周）
+- 第 0 周：架构定版与准备
+  - 选型确认（Capacitor 本地优先，保留云端备份为后续）。
+  - 任务分解与数据表设计，定义 `storageAdapter` 接口。
+- 第 1 周：移动容器与基础存储
+  - 集成 Capacitor，配置 Android/iOS 平台；打通插件。
+  - 建表与迁移脚本：`books / book_content / highlights / annotations / user_notes / progress`。
+  - 在 Reader 的创建/编辑/删除路径接入存储（高亮、批注、进度）。
+- 第 2 周：备份与搜索
+  - 导入/导出（JSON 与 `.db`）；设置页加备份与恢复入口。
+  - 接入 FTS5 或前端索引；实现书内搜索接口与 UI。
+- 第 3 周：优化与测试
+  - 性能与兼容性优化（长文分段、批注折线渲染与重绘）。
+  - 单元与集成测试（存储适配器、数据一致性）；打包测试 APK/IPA。
+  - 文档与发布流程。
+- 后续：云备份开关
+  - 增量添加 Supabase 备份模块与冲突策略。
+
+七、关键风险与缓解
+- 插件兼容性：锁定版本并在真机上验证；必要时降级为简单 KV + 文件持久化备份。
++- 大文档与搜索性能：分段存储与惰性索引；分页加载；FTS5 索引维护策略。
+- 数据丢失：强制导出提醒与自动本地备份；操作前事务。
+- RN 重写风险：DOM 选区与高亮映射在 RN 需重构，优先走 Capacitor 复用现有代码。
+
+八、数据表草案（本地 SQLite）
+- books(id TEXT PRIMARY KEY, title TEXT, author TEXT, total_params INTEGER, meta JSON)
+- book_content(id INTEGER PRIMARY KEY AUTOINCREMENT, book_id TEXT, paragraph_index INTEGER, text TEXT, FOREIGN KEY(book_id) REFERENCES books(id))
+- highlights(id INTEGER PRIMARY KEY AUTOINCREMENT, book_id TEXT, paragraph_index INTEGER, start_offset INTEGER, end_offset INTEGER, color TEXT, style TEXT, note_id INTEGER NULL)
+- annotations(id INTEGER PRIMARY KEY AUTOINCREMENT, highlight_id INTEGER, x REAL, y REAL, text TEXT, FOREIGN KEY(highlight_id) REFERENCES highlights(id))
+- user_notes(id INTEGER PRIMARY KEY AUTOINCREMENT, book_id TEXT, text TEXT, created_at TEXT)
+- progress(id INTEGER PRIMARY KEY AUTOINCREMENT, book_id TEXT, percent REAL, updated_at TEXT)
+
+九、落地建议（最终）
+- 先执行路线 A（Capacitor + 本地 SQLite），确保私密与离线体验；提供导入/导出作为备份。
+- 在设置加入“云备份与同步（Beta）”入口，后续接 Supabase，避免一次性改造过大。
+
+十、混合策略（推荐）
+- 架构原则
+  - 本地优先：所有核心读写走设备 SQLite；确保离线可用与最低延迟。
+  - 可选云：在设置中提供“云备份与同步”开关；默认关闭，用户主动开启。
+  - 模块化：通过 `storageAdapter` 抽象本地与云端，实现可插拔与最小侵入。
+- 数据流与同步模型
+  - 变更记录：为 `highlights / annotations / user_notes / progress` 记录 `updated_at / version` 字段，用于增量同步。
+  - 同步方向：本地→云端备份；云端→本地恢复/合并。默认采用 LWW（Last-Write-Wins）按 `updated_at` 解决冲突。
+  - 粒度选择：以“高亮/批注”为基本实体同步，避免整库覆盖；大文本内容 `book_content` 可选择只备份元数据或云端拉取。
+  - 批量策略：上线后台任务（App 前台时定时或手动触发），分页上传/下载，防止阻塞 UI。
+- 设置与用户控制
+  - 开关项：云备份与同步（含说明与隐私提示）。
+  - 备份频率：手动、每天一次、仅 Wi‑Fi。
+  - 导入/导出：一键导出 JSON 或 `.db`；选择文件导入与合并。
+  - 账号关联（可选）：开启云端后可登录账户用于多设备同步；未登录保持本地模式。
+- 隐私与安全
+  - 本地数据：可选加密（AES‑GCM）保护敏感笔记；密钥存于设备安全存储。
+  - 云端数据：启用 Supabase RLS，数据仅限本人访问；密钥仅服务端可见（Edge Functions 调用外部 API）。
+  - 可撤销：用户可关闭同步并清理云端副本（提供“清除云备份”操作）。
+- 失败场景与降级
+  - 网络不可用：停留本地模式，记录待同步队列；显示离线状态。
+  - 冲突或合并失败：提示保留两份版本，允许手动选择；日志上报便于排查。
+  - 云端异常：自动退回本地备份；不影响阅读与编辑。
+- 技术实现
+  - 本地层：Capacitor + `@capacitor-community/sqlite`，统一 CRUD；`@capacitor/filesystem` 用于导入/导出。
+  - 云端层：`@supabase/supabase-js` + RLS；同步器模块读取本地变更并增量上行，下行按版本合并。
+  - 边缘函数：封装敏感操作与复杂合并，后续支持分享与协作。
+  - 适配层：`storageAdapter` 暴露 `get/put/list` 与同步钩子；Reader 与 Stories 仅依赖该接口。
+- 开发计划（增量）
+  - 阶段 1：完成本地 SQLite 与导入/导出；抽象 `storageAdapter` 并接入 Reader/Stories。
+  - 阶段 2：设置页加入“云备份与同步（Beta）”开关；实现单向备份（本地→云）。
+  - 阶段 3：实现下行恢复与合并（云→本地），LWW 策略与冲突提示；加入备份频率与仅 Wi‑Fi。
+  - 阶段 4：优化同步性能与错误处理；增加边缘函数与分享（可选）。
+- 指标与验收
+  - 离线可读写、重启后数据不丢失。
+  - 打开同步后，另一设备的数据在 60 秒内可恢复。
+  - 冲突场景可提示并人工选择；关闭同步后隐私清理生效。
