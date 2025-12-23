@@ -1,10 +1,11 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Book, Tab, UserNote } from './types';
 import { MOCK_BOOKS } from './constants';
 import { Reader } from './components/Reader';
 import { BookOpen, Compass, User, Library as LibraryIcon, Search, Plus, MoreHorizontal, Share, Settings, Sparkles, TrendingUp, Heart, Play, Moon, Sun, Smartphone } from 'lucide-react';
 import { storageAdapter } from './storageAdapter';
+import { importBookFromFile, listImportedBooks, ImportProgress } from './bookImport';
 
 type AppTheme = 'white' | 'gray' | 'dark';
 
@@ -13,6 +14,11 @@ export default function App() {
     const [readingBook, setReadingBook] = useState<Book | null>(null);
     const [notes, setNotes] = useState<UserNote[]>([]);
     const [theme, setTheme] = useState<AppTheme>('white');
+    const [books, setBooks] = useState<Book[]>(MOCK_BOOKS);
+    const [showImport, setShowImport] = useState(false);
+    const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
+    const [importError, setImportError] = useState<string | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Apply theme to body
     useEffect(() => {
@@ -34,6 +40,43 @@ export default function App() {
 
     const handleBookClick = (book: Book) => {
         setReadingBook(book);
+    };
+
+    useEffect(() => {
+        let cancelled = false;
+        listImportedBooks().then(imported => {
+            if (cancelled) return;
+            if (!imported.length) return;
+            setBooks(prev => {
+                const map = new Map<string, Book>();
+                [...imported, ...prev].forEach(b => map.set(b.id, b));
+                return Array.from(map.values());
+            });
+        }).catch(() => {});
+        return () => { cancelled = true; };
+    }, []);
+
+    const startImport = () => {
+        setImportError(null);
+        setImportProgress({ phase: 'select', percent: 0, message: '选择文件' });
+        setShowImport(true);
+        queueMicrotask(() => fileInputRef.current?.click());
+    };
+
+    const handleImportFile = async (file: File) => {
+        setImportError(null);
+        try {
+            const book = await importBookFromFile(file, setImportProgress);
+            setBooks(prev => {
+                const map = new Map<string, Book>();
+                [book, ...prev].forEach(b => map.set(b.id, b));
+                return Array.from(map.values());
+            });
+            setShowImport(false);
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : '导入失败'
+            setImportError(msg);
+        }
     };
 
     const handleSaveNote = (note: UserNote) => {
@@ -62,7 +105,7 @@ export default function App() {
         <div className="h-full w-full flex flex-col font-rounded text-[var(--text-main)] transition-colors duration-500">
             {/* Main Content Area */}
             <div className="flex-1 overflow-y-auto pb-28 no-scrollbar px-5 pt-4">
-                {activeTab === 'Shelf' && <Bookshelf books={MOCK_BOOKS} onOpen={handleBookClick} />}
+                {activeTab === 'Shelf' && <Bookshelf books={books} onOpen={handleBookClick} onImport={startImport} />}
                 {activeTab === 'Discover' && <DiscoverView />}
                 {activeTab === 'Stories' && <StoriesView notes={notes} />}
                 {activeTab === 'Profile' && <ProfileView notesCount={notes.length} theme={theme} onThemeChange={setTheme} />}
@@ -75,13 +118,71 @@ export default function App() {
                 <TabItem active={activeTab === 'Stories'} icon={<BookOpen size={24} strokeWidth={activeTab === 'Stories' ? 2.8 : 2} />} onClick={() => setActiveTab('Stories')} />
                 <TabItem active={activeTab === 'Profile'} icon={<User size={24} strokeWidth={activeTab === 'Profile' ? 2.8 : 2} />} onClick={() => setActiveTab('Profile')} />
             </div>
+
+            {showImport && (
+                <div className="fixed inset-0 z-50 flex items-end justify-center p-5">
+                    <div className="absolute inset-0 bg-black/20" onClick={() => setShowImport(false)} />
+                    <div className="relative glass-modal w-full max-w-[420px] p-5 animate-fade-in-up">
+                        <div className="flex items-center justify-between mb-3">
+                            <h2 className="text-base font-extrabold tracking-tight">Import Book</h2>
+                            <button className="w-9 h-9 glass-btn rounded-full flex items-center justify-center" onClick={() => setShowImport(false)}>
+                                ✕
+                            </button>
+                        </div>
+                        <p className="text-xs opacity-60 mb-4">支持 `EPUB` / `PDF` / `TXT`，导入后离线可用。</p>
+
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept=".epub,.pdf,.txt,application/epub+zip,application/pdf,text/plain"
+                            className="hidden"
+                            onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                void handleImportFile(file);
+                                e.target.value = '';
+                            }}
+                        />
+
+                        <div className="flex items-center gap-3">
+                            <button className="glass-btn primary px-5 py-2 text-xs font-bold" onClick={() => fileInputRef.current?.click()}>
+                                Choose File
+                            </button>
+                            <button className="glass-btn px-5 py-2 text-xs font-bold" onClick={() => setShowImport(false)}>
+                                Cancel
+                            </button>
+                        </div>
+
+                        {importProgress && (
+                            <div className="mt-4">
+                                <div className="flex justify-between items-center mb-2 text-xs opacity-70">
+                                    <span>{importProgress.message ?? 'Importing'}</span>
+                                    <span>{importProgress.percent}%</span>
+                                </div>
+                                <div className="liquid-progress-container h-3 w-full">
+                                    <div className="liquid-progress-fill" style={{ width: `${importProgress.percent}%` }} />
+                                </div>
+                            </div>
+                        )}
+
+                        {importError && (
+                            <div className="mt-4 text-xs text-red-500">
+                                {importError}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
 
 // --- Sub-Components for Views ---
 
-const Bookshelf: React.FC<{ books: Book[], onOpen: (b: Book) => void }> = ({ books, onOpen }) => (
+const Bookshelf: React.FC<{ books: Book[], onOpen: (b: Book) => void; onImport: () => void }> = ({ books, onOpen, onImport }) => {
+    if (!books.length) return null;
+    const continueProgress = storageAdapter.loadProgress(books[0].id) || books[0].progress;
+    return (
     <div className="animate-fade-in-up space-y-6">
         <header className="flex justify-between items-center mt-1">
             <h1 className="text-3xl font-extrabold tracking-tight">Library</h1>
@@ -89,7 +190,7 @@ const Bookshelf: React.FC<{ books: Book[], onOpen: (b: Book) => void }> = ({ boo
                 <button className="w-10 h-10 glass-btn rounded-full flex items-center justify-center">
                     <Search size={20} />
                 </button>
-                <button className="w-10 h-10 glass-btn primary rounded-full flex items-center justify-center">
+                <button className="w-10 h-10 glass-btn primary rounded-full flex items-center justify-center" onClick={onImport} aria-label="Import book">
                     <Plus size={20} strokeWidth={3} />
                 </button>
             </div>
@@ -116,13 +217,13 @@ const Bookshelf: React.FC<{ books: Book[], onOpen: (b: Book) => void }> = ({ boo
                     
                     <div className="mt-auto">
                         <div className="flex justify-between items-end mb-2">
-                             <span className="text-2xl font-bold">{books[0].progress}%</span>
+                             <span className="text-2xl font-bold">{continueProgress}%</span>
                              <div className="w-9 h-9 rounded-full bg-[var(--text-main)] flex items-center justify-center text-[var(--text-inverse)] shadow-lg group-hover:scale-110 transition-transform">
                                  <Play size={16} fill="currentColor" />
                              </div>
                         </div>
                         <div className="liquid-progress-container h-6 w-full">
-                            <div className="liquid-progress-fill" style={{ width: `${books[0].progress}%` }}></div>
+                            <div className="liquid-progress-fill" style={{ width: `${continueProgress}%` }}></div>
                         </div>
                     </div>
                 </div>
@@ -142,7 +243,7 @@ const Bookshelf: React.FC<{ books: Book[], onOpen: (b: Book) => void }> = ({ boo
                     </div>
                 ))}
                 {/* Add New Tile */}
-                <div className="glass-card-sm p-4 cursor-pointer group flex flex-col items-center justify-center text-center gap-2 min-h-[160px] border-dashed border-2 border-[var(--text-sec)]/20 bg-transparent hover:bg-[var(--glass-highlight)]">
+                <div className="glass-card-sm p-4 cursor-pointer group flex flex-col items-center justify-center text-center gap-2 min-h-[160px] border-dashed border-2 border-[var(--text-sec)]/20 bg-transparent hover:bg-[var(--glass-highlight)]" onClick={onImport}>
                     <div className="w-12 h-12 rounded-full bg-[var(--glass-highlight)] flex items-center justify-center opacity-60 group-hover:opacity-100 transition-colors shadow-sm">
                         <Plus size={24} />
                     </div>
@@ -151,7 +252,8 @@ const Bookshelf: React.FC<{ books: Book[], onOpen: (b: Book) => void }> = ({ boo
             </div>
         </div>
     </div>
-);
+    );
+};
 
 const StoriesView: React.FC<{ notes: UserNote[] }> = ({ notes }) => (
     <div className="animate-fade-in-up space-y-6">

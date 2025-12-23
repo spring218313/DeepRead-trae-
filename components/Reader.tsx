@@ -21,6 +21,7 @@ export const Reader: React.FC<ReaderProps> = ({ book, onClose, onSaveNote }) => 
     const [showControls, setShowControls] = useState(true);
     const [showSettings, setShowSettings] = useState(false);
     const [readerMode, setReaderMode] = useState<ReaderMode>('paged');
+    const [showChapterNav, setShowChapterNav] = useState(false);
     
     // Data State
     const [highlights, setHighlights] = useState<Highlight[]>([]);
@@ -76,6 +77,42 @@ export const Reader: React.FC<ReaderProps> = ({ book, onClose, onSaveNote }) => 
     const themes = THEMES[theme];
     const paragraphsPerPage = 3;
     const totalPages = Math.ceil(book.content.length / paragraphsPerPage);
+
+    const chapters = useMemo(() => {
+        if (readerMode === 'paged') {
+            return Array.from({ length: totalPages }, (_, pageIndex) => ({
+                key: `page_${pageIndex}`,
+                label: `Page ${pageIndex + 1}`,
+                pageIndex
+            }));
+        }
+        const step = 10;
+        const total = Math.max(1, Math.ceil(book.content.length / step));
+        return Array.from({ length: total }, (_, i) => ({
+            key: `para_${i * step}`,
+            label: `Section ${i + 1}`,
+            paragraphIndex: i * step
+        }));
+    }, [readerMode, totalPages, book.content.length]);
+
+    const goToChapter = (target: { pageIndex?: number; paragraphIndex?: number }) => {
+        if (readerMode === 'paged') {
+            const pageIndex = Math.max(0, Math.min(totalPages - 1, target.pageIndex ?? 0));
+            setCurrentPage(pageIndex);
+            const percent = (pageIndex / totalPages) * 100;
+            storageAdapter.saveProgress(book.id, percent);
+            setDrawings([]);
+            setAnnotations([]);
+            setActiveHighlightId(null);
+            setHighlightMenuRect(null);
+            return;
+        }
+        const paragraphIndex = Math.max(0, Math.min(book.content.length - 1, target.paragraphIndex ?? 0));
+        const el = contentRef.current?.querySelector(`[data-index="${paragraphIndex}"]`) as HTMLElement | null;
+        if (el) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        const percent = (paragraphIndex / Math.max(1, book.content.length)) * 100;
+        storageAdapter.saveProgress(book.id, percent);
+    };
 
     // Update canvas height and width based on content
     useEffect(() => {
@@ -183,8 +220,10 @@ export const Reader: React.FC<ReaderProps> = ({ book, onClose, onSaveNote }) => 
         const rect = canvas.getBoundingClientRect();
         let clientX, clientY;
         if ('touches' in e) {
-            clientX = e.touches[0].clientX;
-            clientY = e.touches[0].clientY;
+            const t = e.touches[0] ?? e.changedTouches?.[0];
+            if (!t) return { x: 0, y: 0 };
+            clientX = t.clientX;
+            clientY = t.clientY;
         } else {
             clientX = (e as React.MouseEvent).clientX;
             clientY = (e as React.MouseEvent).clientY;
@@ -197,8 +236,10 @@ export const Reader: React.FC<ReaderProps> = ({ book, onClose, onSaveNote }) => 
         const rect = canvas.getBoundingClientRect();
         let clientX, clientY;
         if ('touches' in e) {
-            clientX = e.touches[0].clientX;
-            clientY = e.touches[0].clientY;
+            const t = e.touches[0] ?? e.changedTouches?.[0];
+            if (!t) return { x: 0, y: 0 };
+            clientX = t.clientX;
+            clientY = t.clientY;
         } else {
             clientX = (e as React.MouseEvent).clientX;
             clientY = (e as React.MouseEvent).clientY;
@@ -208,16 +249,16 @@ export const Reader: React.FC<ReaderProps> = ({ book, onClose, onSaveNote }) => 
     const eraseRightAt = (x: number, y: number) => {
         const radius = 16;
         setRightDrawings(prev => {
-            const next = prev.map(stroke => {
+            const next: DrawingStroke[] = [];
+            for (const stroke of prev) {
                 if (eraserMode === 'stroke') {
-                    if (stroke.points.some(p => Math.hypot(p.x - x, p.y - y) < radius)) return null as any;
-                    return stroke;
-                } else {
-                    const pts = stroke.points.filter(p => Math.hypot(p.x - x, p.y - y) >= radius);
-                    if (pts.length < 2) return null as any;
-                    return { ...stroke, points: pts };
+                    const hit = stroke.points.some(p => Math.hypot(p.x - x, p.y - y) < radius);
+                    if (!hit) next.push(stroke);
+                    continue;
                 }
-            }).filter(Boolean) as DrawingStroke[];
+                const pts = stroke.points.filter(p => Math.hypot(p.x - x, p.y - y) >= radius);
+                if (pts.length >= 2) next.push({ ...stroke, points: pts });
+            }
             return next;
         });
     };
@@ -694,14 +735,80 @@ export const Reader: React.FC<ReaderProps> = ({ book, onClose, onSaveNote }) => 
                     <button 
                         onClick={() => setIsPencilMode(!isPencilMode)}
                         className={`p-2.5 rounded-full transition-all ${isPencilMode ? 'bg-[var(--text-main)] text-[var(--text-inverse)] shadow-xl' : 'hover:bg-black/5 text-current'}`}
+                        aria-label="Pencil"
+                        title="Pencil"
                     >
                         <Pencil size={20} />
                     </button>
-                    <button className="p-2.5 rounded-full hover:bg-black/5 text-current">
+                    <button 
+                        className="p-2.5 rounded-full hover:bg-black/5 text-current"
+                        aria-label="Chapters"
+                        title="Chapters"
+                        onClick={(e) => {
+                            // Fix: 章节导航按钮此前未绑定点击事件，导致功能栏展开时该按钮“看得见但无法触发”。
+                            // 这里仅补齐该按钮的交互逻辑，不改动其他按钮与区域的事件处理。
+                            e.stopPropagation();
+                            setShowChapterNav(v => !v);
+                        }}
+                        onTouchStart={(e) => {
+                            e.stopPropagation();
+                        }}
+                    >
                         <List size={20} />
                     </button>
                 </div>
             </div>
+
+            {showChapterNav && (
+                <div className="fixed inset-0 z-[60] flex items-start justify-center p-5 pt-24">
+                    <div
+                        className="absolute inset-0 bg-black/20"
+                        onClick={() => setShowChapterNav(false)}
+                    />
+                    <div
+                        className="relative glass-modal w-full max-w-[420px] p-4 animate-fade-in-up pointer-events-auto"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="flex items-center justify-between mb-3">
+                            <h2 className="text-base font-extrabold tracking-tight">Chapters</h2>
+                            <button
+                                className="w-9 h-9 glass-btn rounded-full flex items-center justify-center"
+                                onClick={() => setShowChapterNav(false)}
+                                aria-label="Close chapters"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <div className="max-h-[50vh] overflow-y-auto no-scrollbar space-y-2">
+                            {chapters.map((c) => {
+                                const active = readerMode === 'paged'
+                                    ? c.pageIndex === currentPage
+                                    : false;
+                                return (
+                                    <button
+                                        key={c.key}
+                                        className={`w-full text-left glass-card-sm px-4 py-3 transition-all ${active ? 'ring-2 ring-black/10' : 'hover:scale-[1.01]'}`}
+                                        onClick={() => {
+                                            // Fix: 确保面板内章节项可点击且切换后同步进度写入（离线同样生效）。
+                                            if ('pageIndex' in c) goToChapter({ pageIndex: c.pageIndex });
+                                            else goToChapter({ paragraphIndex: (c as any).paragraphIndex });
+                                            setShowChapterNav(false);
+                                        }}
+                                        aria-label={`Chapter ${c.label}`}
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-sm font-bold truncate">{c.label}</span>
+                                            {readerMode === 'paged' && (
+                                                <span className="text-[10px] font-bold opacity-40">#{(c.pageIndex ?? 0) + 1}</span>
+                                            )}
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Reading Area / Tablet Split */}
             <div className="flex-1 overflow-hidden relative" onClick={handleContentClick} onMouseUp={handleSelection} onTouchEnd={handleSelection}>
@@ -730,30 +837,30 @@ export const Reader: React.FC<ReaderProps> = ({ book, onClose, onSaveNote }) => 
                             <div className="absolute inset-0 opacity-[0.15] pointer-events-none" style={{ backgroundImage: 'repeating-linear-gradient(180deg, rgba(0,0,0,0.08) 0px, rgba(0,0,0,0.08) 1px, transparent 1px, transparent 28px)' }} />
                             
                             {/* Header Module - Buttons */}
-                            <div className="relative z-30 p-4 pt-24 flex justify-end shrink-0 interactive-area">
+                            <div className="relative z-50 p-4 pt-24 flex justify-end shrink-0 pointer-events-auto touch-manipulation">
                                 <div className="flex items-center gap-2">
                                     <button 
-                                        onClick={(e) => { e.stopPropagation(); setIsPencilMode(false); }} 
-                                        onTouchStart={(e) => { e.stopPropagation(); setIsPencilMode(false); }} 
-                                        className="w-9 h-9 glass-btn rounded-full flex items-center justify-center text-current"
+                                        onClick={(e) => { e.stopPropagation(); setIsErasing(false); setIsPencilMode(false); }} 
+                                        onTouchStart={(e) => { e.stopPropagation(); setIsErasing(false); setIsPencilMode(false); }} 
+                                        className="w-9 h-9 glass-btn rounded-full flex items-center justify-center text-current pointer-events-auto touch-manipulation"
                                         title="退出"
                                         aria-label="退出"
                                     >
                                         <X size={18} />
                                     </button>
                                     <button 
-                                        onClick={(e) => { e.stopPropagation(); setNotebookMode(m => m === 'type' ? 'draw' : 'type'); }} 
-                                        onTouchStart={(e) => { e.stopPropagation(); setNotebookMode(m => m === 'type' ? 'draw' : 'type'); }} 
-                                        className={`w-9 h-9 glass-btn rounded-full flex items-center justify-center text-current ${notebookMode === 'draw' ? 'ring-2 ring-black/10' : ''}`}
+                                        onClick={(e) => { e.stopPropagation(); setIsErasing(false); setNotebookMode(m => m === 'type' ? 'draw' : 'type'); }} 
+                                        onTouchStart={(e) => { e.stopPropagation(); setIsErasing(false); setNotebookMode(m => m === 'type' ? 'draw' : 'type'); }} 
+                                        className={`w-9 h-9 glass-btn rounded-full flex items-center justify-center text-current pointer-events-auto touch-manipulation ${notebookMode === 'draw' ? 'ring-2 ring-black/10' : ''}`}
                                         title={notebookMode === 'draw' ? '手写输入' : '打字输入'}
                                         aria-label={notebookMode === 'draw' ? '手写输入' : '打字输入'}
                                     >
                                         {notebookMode === 'draw' ? <Pencil size={18} /> : <ScrollText size={18} />}
                                     </button>
                                     <button 
-                                        onClick={(e) => { e.stopPropagation(); setIsErasing(true); setEraserMode(m => m === 'region' ? 'stroke' : 'region'); }} 
-                                        onTouchStart={(e) => { e.stopPropagation(); setIsErasing(true); setEraserMode(m => m === 'region' ? 'stroke' : 'region'); }} 
-                                        className="w-9 h-9 glass-btn rounded-full flex items-center justify-center text-current"
+                                        onClick={(e) => { e.stopPropagation(); setNotebookMode('draw'); setIsErasing(v => !v); setEraserMode(m => m === 'region' ? 'stroke' : 'region'); }} 
+                                        onTouchStart={(e) => { e.stopPropagation(); setNotebookMode('draw'); setIsErasing(v => !v); setEraserMode(m => m === 'region' ? 'stroke' : 'region'); }} 
+                                        className={`w-9 h-9 glass-btn rounded-full flex items-center justify-center text-current pointer-events-auto touch-manipulation ${isErasing && notebookMode === 'draw' ? 'ring-2 ring-black/10' : ''}`}
                                         title={eraserMode === 'region' ? '触碰区域擦除' : '整笔擦除'}
                                         aria-label={eraserMode === 'region' ? '触碰区域擦除' : '整笔擦除'}
                                     >
@@ -777,7 +884,7 @@ export const Reader: React.FC<ReaderProps> = ({ book, onClose, onSaveNote }) => 
                                     ref={rightCanvasRef}
                                     width={notebookSize.width}
                                     height={notebookSize.height}
-                                    className={`absolute inset-0 z-20 ${isPencilMode && isTablet && isLandscape && notebookMode === 'draw' ? 'pointer-events-auto cursor-crosshair' : 'pointer-events-none'}`}
+                                    className={`absolute inset-0 z-10 ${isPencilMode && isTablet && isLandscape && notebookMode === 'draw' ? 'pointer-events-auto cursor-crosshair' : 'pointer-events-none'}`}
                                     onTouchStart={(e) => { 
                                         e.stopPropagation(); 
                                         if (!isPencilMode || !(isTablet && isLandscape)) return; 
