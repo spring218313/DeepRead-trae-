@@ -61,6 +61,16 @@ export interface ProgressRow {
   updated_at: string
 }
 
+export interface BookChapterRow {
+  id: ID
+  user_id: ID
+  book_id: ID
+  title: string
+  start_paragraph_index: number
+  updated_at: string
+  version: number
+}
+
 export interface Page<T> {
   items: T[]
   nextCursor?: string

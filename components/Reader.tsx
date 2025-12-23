@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Book, ThemeType, Highlight, UserNote, DrawingStroke, Annotation } from '../types';
+import { Book, ThemeType, Highlight, UserNote, DrawingStroke, Annotation, BookChapter } from '../types';
 import { THEMES } from '../constants';
 import { ChevronLeft, List, ChevronRight, Copy, Highlighter, PenLine, Share2, Search, X, Pencil, Eraser, Trash2, ScrollText, BookOpen } from 'lucide-react';
 import { storageAdapter } from '../storageAdapter';
@@ -78,28 +78,14 @@ export const Reader: React.FC<ReaderProps> = ({ book, onClose, onSaveNote }) => 
     const paragraphsPerPage = 3;
     const totalPages = Math.ceil(book.content.length / paragraphsPerPage);
 
-    const chapters = useMemo(() => {
-        if (readerMode === 'paged') {
-            return Array.from({ length: totalPages }, (_, pageIndex) => ({
-                key: `page_${pageIndex}`,
-                label: `Page ${pageIndex + 1}`,
-                pageIndex
-            }));
-        }
-        const step = 10;
-        const total = Math.max(1, Math.ceil(book.content.length / step));
-        return Array.from({ length: total }, (_, i) => ({
-            key: `para_${i * step}`,
-            label: `Section ${i + 1}`,
-            paragraphIndex: i * step
-        }));
-    }, [readerMode, totalPages, book.content.length]);
+    const [chapters, setChapters] = useState<BookChapter[]>([]);
 
-    const goToChapter = (target: { pageIndex?: number; paragraphIndex?: number }) => {
+    const goToChapter = (chapter: BookChapter) => {
         if (readerMode === 'paged') {
-            const pageIndex = Math.max(0, Math.min(totalPages - 1, target.pageIndex ?? 0));
-            setCurrentPage(pageIndex);
-            const percent = (pageIndex / totalPages) * 100;
+            const pageIndex = Math.floor(chapter.startParagraphIndex / paragraphsPerPage);
+            const clamped = Math.max(0, Math.min(totalPages - 1, pageIndex));
+            setCurrentPage(clamped);
+            const percent = (clamped / totalPages) * 100;
             storageAdapter.saveProgress(book.id, percent);
             setDrawings([]);
             setAnnotations([]);
@@ -107,12 +93,22 @@ export const Reader: React.FC<ReaderProps> = ({ book, onClose, onSaveNote }) => 
             setHighlightMenuRect(null);
             return;
         }
-        const paragraphIndex = Math.max(0, Math.min(book.content.length - 1, target.paragraphIndex ?? 0));
+        const paragraphIndex = Math.max(0, Math.min(book.content.length - 1, chapter.startParagraphIndex));
         const el = contentRef.current?.querySelector(`[data-index="${paragraphIndex}"]`) as HTMLElement | null;
         if (el) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
         const percent = (paragraphIndex / Math.max(1, book.content.length)) * 100;
         storageAdapter.saveProgress(book.id, percent);
     };
+
+    useEffect(() => {
+        const ensured = storageAdapter.ensureChapters({ id: book.id, title: book.title, content: book.content });
+        setChapters(ensured);
+    }, [book.id]);
+
+    useEffect(() => {
+        if (!showChapterNav) return;
+        setChapters(storageAdapter.loadChapters(book.id));
+    }, [showChapterNav, book.id]);
 
     // Update canvas height and width based on content
     useEffect(() => {
@@ -745,8 +741,6 @@ export const Reader: React.FC<ReaderProps> = ({ book, onClose, onSaveNote }) => 
                         aria-label="Chapters"
                         title="Chapters"
                         onClick={(e) => {
-                            // Fix: 章节导航按钮此前未绑定点击事件，导致功能栏展开时该按钮“看得见但无法触发”。
-                            // 这里仅补齐该按钮的交互逻辑，不改动其他按钮与区域的事件处理。
                             e.stopPropagation();
                             setShowChapterNav(v => !v);
                         }}
@@ -782,24 +776,22 @@ export const Reader: React.FC<ReaderProps> = ({ book, onClose, onSaveNote }) => 
                         <div className="max-h-[50vh] overflow-y-auto no-scrollbar space-y-2">
                             {chapters.map((c) => {
                                 const active = readerMode === 'paged'
-                                    ? c.pageIndex === currentPage
+                                    ? Math.floor(c.startParagraphIndex / paragraphsPerPage) === currentPage
                                     : false;
                                 return (
                                     <button
-                                        key={c.key}
+                                        key={c.id}
                                         className={`w-full text-left glass-card-sm px-4 py-3 transition-all ${active ? 'ring-2 ring-black/10' : 'hover:scale-[1.01]'}`}
                                         onClick={() => {
-                                            // Fix: 确保面板内章节项可点击且切换后同步进度写入（离线同样生效）。
-                                            if ('pageIndex' in c) goToChapter({ pageIndex: c.pageIndex });
-                                            else goToChapter({ paragraphIndex: (c as any).paragraphIndex });
+                                            goToChapter(c);
                                             setShowChapterNav(false);
                                         }}
-                                        aria-label={`Chapter ${c.label}`}
+                                        aria-label={`Chapter ${c.title}`}
                                     >
                                         <div className="flex items-center justify-between">
-                                            <span className="text-sm font-bold truncate">{c.label}</span>
+                                            <span className="text-sm font-bold truncate">{c.title}</span>
                                             {readerMode === 'paged' && (
-                                                <span className="text-[10px] font-bold opacity-40">#{(c.pageIndex ?? 0) + 1}</span>
+                                                <span className="text-[10px] font-bold opacity-40">#{Math.floor(c.startParagraphIndex / paragraphsPerPage) + 1}</span>
                                             )}
                                         </div>
                                     </button>

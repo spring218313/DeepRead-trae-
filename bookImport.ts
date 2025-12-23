@@ -1,4 +1,5 @@
 import { Book } from './types'
+import { storageAdapter } from './storageAdapter'
 
 type ImportFormat = 'txt' | 'pdf' | 'epub'
 
@@ -241,6 +242,9 @@ export async function importBookFromFile(
   } catch {}
 
   writeImportedBookToWebStorage(book)
+  try {
+    storageAdapter.ensureChapters(book)
+  } catch {}
 
   onProgress({ phase: 'done', percent: 100, message: '导入完成' })
   return book

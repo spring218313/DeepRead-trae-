@@ -40,6 +40,13 @@ export interface Book {
     content: string[]; 
 }
 
+export interface BookChapter {
+    id: string;
+    bookId: string;
+    title: string;
+    startParagraphIndex: number;
+}
+
 export interface UserNote {
     id: string;
     bookId: string;

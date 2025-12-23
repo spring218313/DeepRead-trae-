@@ -8,6 +8,7 @@ export async function exportUserData(userId: string): Promise<Record<string, unk
   const annotations = await db.query('SELECT * FROM annotations WHERE user_id=$1', [userId])
   const notes = await db.query('SELECT * FROM user_notes WHERE user_id=$1', [userId])
   const progress = await db.query('SELECT * FROM progress WHERE user_id=$1', [userId])
+  const chapters = await db.query('SELECT * FROM book_chapters WHERE user_id=$1', [userId])
   const drafts = await db.query('SELECT * FROM notebook_drafts WHERE user_id=$1', [userId])
   return {
     books: books.rows,
@@ -15,6 +16,7 @@ export async function exportUserData(userId: string): Promise<Record<string, unk
     annotations: annotations.rows,
     user_notes: notes.rows,
     progress: progress.rows,
+    book_chapters: chapters.rows,
     notebook_drafts: drafts.rows
   }
 }
@@ -46,6 +48,13 @@ export async function importUserData(userId: string, data: Record<string, unknow
     await db.query(
       'INSERT INTO progress(user_id,book_id,percent,updated_at) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING',
       [userId, p.book_id, p.percent, p.updated_at]
+    )
+  }
+  const cs = (data['book_chapters'] as any[]) ?? []
+  for (const c of cs) {
+    await db.query(
+      'INSERT INTO book_chapters(id,user_id,book_id,title,start_paragraph_index,updated_at,version) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (id) DO UPDATE SET title=EXCLUDED.title, start_paragraph_index=EXCLUDED.start_paragraph_index, updated_at=EXCLUDED.updated_at, version=EXCLUDED.version',
+      [c.id, userId, c.book_id, c.title, c.start_paragraph_index, c.updated_at, c.version ?? 1]
     )
   }
   const ds = (data['notebook_drafts'] as any[]) ?? []

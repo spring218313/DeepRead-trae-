@@ -61,6 +61,18 @@ CREATE TABLE IF NOT EXISTS progress (
   updated_at TIMESTAMPTZ NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS book_chapters (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  start_paragraph_index INTEGER NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL,
+  version INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_book_chapters_user_book_start ON book_chapters(user_id, book_id, start_paragraph_index);
+
 CREATE INDEX IF NOT EXISTS idx_book_content_para ON book_content(book_id, paragraph_index);
 
 CREATE TABLE IF NOT EXISTS notebook_drafts (

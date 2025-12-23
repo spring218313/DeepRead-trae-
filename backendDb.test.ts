@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { insertAnnotation, listAnnotations, updateAnnotation, deleteAnnotation } from './backend/services/annotationsDao'
 import { upsertHighlights, listHighlights, deleteHighlight } from './backend/services/highlightsDao'
 import { upsertUserNote, listUserNotes } from './backend/services/userNotesDao'
+import { upsertChapters, listChapters, deleteChapter } from './backend/services/chaptersDao'
 
 describe('backend local DB adapter (Web Storage)', () => {
   it('supports highlight insert/list/delete', async () => {
@@ -68,5 +69,33 @@ describe('backend local DB adapter (Web Storage)', () => {
     const list = await listUserNotes('u1')
     expect(list.some(n => n.id === 'n1')).toBe(true)
   })
-})
 
+  it('supports chapters upsert/list/delete', async () => {
+    await upsertChapters('u1', 'b1', [
+      {
+        id: 'c1',
+        user_id: 'u1',
+        book_id: 'b1',
+        title: '第一章',
+        start_paragraph_index: 0,
+        updated_at: new Date(1).toISOString(),
+        version: 1
+      },
+      {
+        id: 'c2',
+        user_id: 'u1',
+        book_id: 'b1',
+        title: '第二章',
+        start_paragraph_index: 10,
+        updated_at: new Date(1).toISOString(),
+        version: 1
+      }
+    ])
+    const list = await listChapters('u1', 'b1')
+    expect(list.map(x => x.id)).toEqual(['c1', 'c2'])
+
+    await deleteChapter('u1', 'c1')
+    const list2 = await listChapters('u1', 'b1')
+    expect(list2.some(x => x.id === 'c1')).toBe(false)
+  })
+})

@@ -1,4 +1,4 @@
-import { Annotation, Highlight, UserNote, DrawingStroke } from './types'
+import { Annotation, Highlight, UserNote, DrawingStroke, Book, BookChapter } from './types'
 
 const read = <T>(key: string, fallback: T): T => {
   try {
@@ -19,6 +19,103 @@ const prKey = (bookId: string) => `dr_progress_${bookId}`
 const notesKey = `dr_user_notes`
 const nbDraftKey = (bookId: string) => `dr_nb_draft_${bookId}`
 const nbStrokesKey = (bookId: string) => `dr_nb_strokes_${bookId}`
+const chKey = (bookId: string) => `dr_chapters_${bookId}`
+const chBackupKey = (bookId: string) => `dr_chapters_backup_${bookId}`
+const chBackupMetaKey = (bookId: string) => `dr_chapters_backup_meta_${bookId}`
+
+const isSimulatedChapterTitle = (title: string) => {
+  const t = title.trim()
+  if (!t) return true
+  return /^(page|section)\s+\d+$/i.test(t)
+}
+
+const normalizeChapters = (bookId: string, chapters: BookChapter[]): BookChapter[] => {
+  const out: BookChapter[] = []
+  const seen = new Set<string>()
+  for (const c of chapters) {
+    if (!c) continue
+    const title = String(c.title ?? '').trim()
+    if (isSimulatedChapterTitle(title)) {
+      throw new Error('章节数据校验失败：禁止使用模拟章节名称')
+    }
+    const startParagraphIndex = Number(c.startParagraphIndex)
+    if (!Number.isFinite(startParagraphIndex) || startParagraphIndex < 0) {
+      throw new Error('章节数据校验失败：章节定位索引无效')
+    }
+    const id = String(c.id ?? '').trim()
+    const fixedId = id || `${bookId}_${startParagraphIndex}_${title}`
+    const key = `${fixedId}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push({ id: fixedId, bookId, title, startParagraphIndex })
+  }
+  out.sort((a, b) => a.startParagraphIndex - b.startParagraphIndex)
+  return out
+}
+
+function safeChapterId(bookId: string, startParagraphIndex: number, title: string): string {
+  return `${bookId}_${startParagraphIndex}_${title}`
+}
+
+function isLikelyHeading(text: string): boolean {
+  const t = text.trim()
+  if (!t) return false
+  if (t.length > 60) return false
+
+  if (t.length < 3) {
+    return /^(序|前言|引言|后记|尾声|附录)$/.test(t)
+  }
+
+  if (/^(序|前言|引言|后记|尾声|附录)\b/.test(t)) return true
+  if (/^第[\d一二三四五六七八九十百千零〇两]+[章节卷部篇回]\b/.test(t)) return true
+  if (/^(chapter|part|book)\s+([0-9]+|[ivxlcdm]+)\b/i.test(t)) return true
+
+  const punctuation = /[，。！？；:：、“”"'.·…]/.test(t)
+  if (!punctuation && t.length <= 28) {
+    if (/^[a-z]\d+$/i.test(t)) return false
+    if (/^[a-z]{1,3}\d{1,3}$/i.test(t)) return false
+    return true
+  }
+  return false
+}
+
+function deriveChaptersFromContent(book: Pick<Book, 'id' | 'title' | 'content'>): BookChapter[] {
+  const hits: Array<{ title: string; startParagraphIndex: number }> = []
+  const content = Array.isArray(book.content) ? book.content : []
+  for (let i = 0; i < content.length; i++) {
+    const raw = String(content[i] ?? '').trim()
+    if (!raw) continue
+    if (!isLikelyHeading(raw)) continue
+    const title = raw.replace(/\s+/g, ' ').trim()
+    if (!title) continue
+    if (isSimulatedChapterTitle(title)) continue
+    hits.push({ title, startParagraphIndex: i })
+  }
+
+  const chapters: BookChapter[] = []
+  if (hits.length === 0) {
+    const title = book.title?.trim() ? book.title.trim() : '正文'
+    chapters.push({ id: safeChapterId(book.id, 0, title), bookId: book.id, title, startParagraphIndex: 0 })
+    return chapters
+  }
+
+  const first = hits[0]
+  if (first.startParagraphIndex !== 0) {
+    chapters.push({ id: safeChapterId(book.id, 0, '正文'), bookId: book.id, title: '正文', startParagraphIndex: 0 })
+  }
+
+  for (const h of hits) {
+    chapters.push({ id: safeChapterId(book.id, h.startParagraphIndex, h.title), bookId: book.id, title: h.title, startParagraphIndex: h.startParagraphIndex })
+  }
+  return normalizeChapters(book.id, chapters)
+}
+
+function backupChaptersIfNeeded(bookId: string, raw: unknown, reason: string): void {
+  const existing = localStorage.getItem(chBackupKey(bookId))
+  if (existing !== null) return
+  write(chBackupKey(bookId), raw)
+  write(chBackupMetaKey(bookId), { reason, at: new Date().toISOString() })
+}
 
 export const storageAdapter = {
   loadHighlights: (bookId: string): Highlight[] => read<Highlight[]>(hlKey(bookId), []),
@@ -74,6 +171,52 @@ export const storageAdapter = {
   saveNotebookDraft: (bookId: string, text: string) => write(nbDraftKey(bookId), text),
   loadNotebookStrokes: (bookId: string): DrawingStroke[] => read<DrawingStroke[]>(nbStrokesKey(bookId), []),
   saveNotebookStrokes: (bookId: string, strokes: DrawingStroke[]) => write(nbStrokesKey(bookId), strokes),
+  loadChapters: (bookId: string): BookChapter[] => {
+    const raw = read<BookChapter[]>(chKey(bookId), [])
+    try {
+      return normalizeChapters(bookId, raw)
+    } catch {
+      return []
+    }
+  },
+  saveChaptersBulk: (bookId: string, chapters: BookChapter[]) => {
+    const next = normalizeChapters(bookId, chapters)
+    write(chKey(bookId), next)
+  },
+  ensureChapters: (book: Pick<Book, 'id' | 'title' | 'content'>): BookChapter[] => {
+    const raw = read<unknown>(chKey(book.id), [])
+    if (Array.isArray(raw)) {
+      try {
+        const normalized = normalizeChapters(book.id, raw as BookChapter[])
+        if (normalized.length > 0) return normalized
+      } catch {
+        backupChaptersIfNeeded(book.id, raw, 'invalid')
+      }
+    }
+
+    const derived = deriveChaptersFromContent(book)
+    try {
+      if (Array.isArray(raw) && raw.length > 0) {
+        backupChaptersIfNeeded(book.id, raw, 'migrate')
+      }
+      write(chKey(book.id), derived)
+    } catch {
+      return derived
+    }
+    return derived
+  },
+  rollbackChapters: (bookId: string): boolean => {
+    const raw = localStorage.getItem(chBackupKey(bookId))
+    if (!raw) return false
+    try {
+      localStorage.setItem(chKey(bookId), raw)
+      localStorage.removeItem(chBackupKey(bookId))
+      localStorage.removeItem(chBackupMetaKey(bookId))
+      return true
+    } catch {
+      return false
+    }
+  },
   exportAll: (): string => {
     const keys = Object.keys(localStorage).filter(k => k.startsWith('dr_'))
     const data: Record<string, unknown> = {}
