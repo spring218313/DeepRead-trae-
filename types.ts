@@ -35,6 +35,9 @@ export interface Book {
     title: string;
     author: string;
     coverColor: string;
+    coverHex?: string;
+    coverImage?: string;
+    folderId?: string | null;
     progress: number;
     totalParams: number;
     content: string[]; 
@@ -45,6 +48,13 @@ export interface BookChapter {
     bookId: string;
     title: string;
     startParagraphIndex: number;
+}
+
+export interface Folder {
+    id: string;
+    name: string;
+    parentId?: string | null;
+    createdAt: string;
 }
 
 export interface UserNote {

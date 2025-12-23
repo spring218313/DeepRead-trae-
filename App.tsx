@@ -1,11 +1,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Book, Tab, UserNote } from './types';
-import { MOCK_BOOKS } from './constants';
+import { Book, Tab, UserNote, Folder } from './types';
 import { Reader } from './components/Reader';
 import { BookOpen, Compass, User, Library as LibraryIcon, Search, Plus, MoreHorizontal, Share, Settings, Sparkles, TrendingUp, Heart, Play, Moon, Sun, Smartphone } from 'lucide-react';
 import { storageAdapter } from './storageAdapter';
-import { importBookFromFile, listImportedBooks, ImportProgress } from './bookImport';
+import { importBookFromFile, listImportedBooks, ImportProgress, deleteImportedBook, patchImportedBook, listFolders, createFolder } from './bookImport';
 
 type AppTheme = 'white' | 'gray' | 'dark';
 
@@ -14,11 +13,25 @@ export default function App() {
     const [readingBook, setReadingBook] = useState<Book | null>(null);
     const [notes, setNotes] = useState<UserNote[]>([]);
     const [theme, setTheme] = useState<AppTheme>('white');
-    const [books, setBooks] = useState<Book[]>(MOCK_BOOKS);
+    const [books, setBooks] = useState<Book[]>([]);
+    const [folders, setFolders] = useState<Folder[]>([]);
+    const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
+    const [manageBook, setManageBook] = useState<Book | null>(null);
+    const [showBookManage, setShowBookManage] = useState(false);
+    const [showCoverManage, setShowCoverManage] = useState(false);
+    const [showMoveManage, setShowMoveManage] = useState(false);
+    const [showFolderCreate, setShowFolderCreate] = useState(false);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [folderDraftName, setFolderDraftName] = useState('');
+    const [folderDraftParentId, setFolderDraftParentId] = useState<string | null>(null);
+    const [coverDraftHex, setCoverDraftHex] = useState<string>('#3b82f6');
+    const [coverDraftImage, setCoverDraftImage] = useState<string | null>(null);
+    const [manageError, setManageError] = useState<string | null>(null);
     const [showImport, setShowImport] = useState(false);
     const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
     const [importError, setImportError] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const coverFileInputRef = useRef<HTMLInputElement>(null);
 
     // Apply theme to body
     useEffect(() => {
@@ -42,18 +55,24 @@ export default function App() {
         setReadingBook(book);
     };
 
-    useEffect(() => {
+    const reloadLibrary = () => {
         let cancelled = false;
-        listImportedBooks().then(imported => {
+        Promise.all([listImportedBooks(), listFolders()]).then(([imported, fs]) => {
             if (cancelled) return;
-            if (!imported.length) return;
-            setBooks(prev => {
-                const map = new Map<string, Book>();
-                [...imported, ...prev].forEach(b => map.set(b.id, b));
-                return Array.from(map.values());
-            });
+            setBooks(imported);
+            setFolders(fs);
         }).catch(() => {});
         return () => { cancelled = true; };
+    };
+
+    useEffect(() => {
+        const cancel = reloadLibrary();
+        const handler = () => reloadLibrary();
+        window.addEventListener('deepread-imported', handler);
+        return () => {
+            cancel();
+            window.removeEventListener('deepread-imported', handler);
+        };
     }, []);
 
     const startImport = () => {
@@ -105,7 +124,27 @@ export default function App() {
         <div className="h-full w-full flex flex-col font-rounded text-[var(--text-main)] transition-colors duration-500">
             {/* Main Content Area */}
             <div className="flex-1 overflow-y-auto pb-28 no-scrollbar px-5 pt-4">
-                {activeTab === 'Shelf' && <Bookshelf books={books} onOpen={handleBookClick} onImport={startImport} />}
+                {activeTab === 'Shelf' && (
+                    <Bookshelf
+                        books={books}
+                        folders={folders}
+                        activeFolderId={activeFolderId}
+                        onSetActiveFolder={setActiveFolderId}
+                        onOpen={handleBookClick}
+                        onImport={startImport}
+                        onManage={(b) => {
+                            setManageError(null);
+                            setManageBook(b);
+                            setShowBookManage(true);
+                            setShowCoverManage(false);
+                            setShowMoveManage(false);
+                            setShowFolderCreate(false);
+                            setShowDeleteConfirm(false);
+                            setCoverDraftHex(b.coverHex ?? '#3b82f6');
+                            setCoverDraftImage(b.coverImage ?? null);
+                        }}
+                    />
+                )}
                 {activeTab === 'Discover' && <DiscoverView />}
                 {activeTab === 'Stories' && <StoriesView notes={notes} />}
                 {activeTab === 'Profile' && <ProfileView notesCount={notes.length} theme={theme} onThemeChange={setTheme} />}
@@ -173,15 +212,256 @@ export default function App() {
                     </div>
                 </div>
             )}
+
+            {showBookManage && manageBook && (
+                <div className="fixed inset-0 z-[60] flex items-end justify-center p-5">
+                    <div className="absolute inset-0 bg-black/20" onClick={() => setShowBookManage(false)} />
+                    <div className="relative glass-modal w-full max-w-[420px] p-5 animate-fade-in-up" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-between mb-3">
+                            <h2 className="text-base font-extrabold tracking-tight truncate max-w-[260px]">{manageBook.title}</h2>
+                            <button className="w-9 h-9 glass-btn rounded-full flex items-center justify-center" onClick={() => setShowBookManage(false)}>
+                                ✕
+                            </button>
+                        </div>
+                        <div className="grid grid-cols-3 gap-3">
+                            <button
+                                className="glass-btn px-4 py-3 text-xs font-bold"
+                                onClick={() => { setShowCoverManage(true); setShowMoveManage(false); setShowFolderCreate(false); setShowDeleteConfirm(false); }}
+                            >
+                                Cover
+                            </button>
+                            <button
+                                className="glass-btn px-4 py-3 text-xs font-bold"
+                                onClick={() => { setShowMoveManage(true); setShowCoverManage(false); setShowFolderCreate(false); setShowDeleteConfirm(false); }}
+                            >
+                                Move
+                            </button>
+                            <button
+                                className="glass-btn px-4 py-3 text-xs font-bold text-red-600"
+                                onClick={() => { setShowDeleteConfirm(true); setShowCoverManage(false); setShowMoveManage(false); setShowFolderCreate(false); }}
+                            >
+                                Delete
+                            </button>
+                        </div>
+
+                        {manageError && (
+                            <div className="mt-4 text-xs text-red-500">{manageError}</div>
+                        )}
+
+                        {showCoverManage && (
+                            <div className="mt-4 space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <div className="text-xs font-bold opacity-60">Cover Image</div>
+                                    <button className="glass-btn px-3 py-1.5 text-xs font-bold" onClick={() => coverFileInputRef.current?.click()}>
+                                        Upload
+                                    </button>
+                                </div>
+                                <input
+                                    ref={coverFileInputRef}
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (!file) return;
+                                        const reader = new FileReader();
+                                        reader.onload = () => {
+                                            const res = typeof reader.result === 'string' ? reader.result : null;
+                                            setCoverDraftImage(res);
+                                        };
+                                        reader.onerror = () => setManageError('封面图片读取失败');
+                                        reader.readAsDataURL(file);
+                                        e.target.value = '';
+                                    }}
+                                />
+                                {coverDraftImage && (
+                                    <div className="flex items-center justify-between">
+                                        <div className="text-xs opacity-60 truncate">已选择封面图片</div>
+                                        <button className="glass-btn px-3 py-1.5 text-xs font-bold" onClick={() => setCoverDraftImage(null)}>
+                                            Remove
+                                        </button>
+                                    </div>
+                                )}
+                                <div className="flex items-center justify-between">
+                                    <div className="text-xs font-bold opacity-60">Cover Color</div>
+                                    <input
+                                        type="color"
+                                        value={coverDraftHex}
+                                        onChange={(e) => setCoverDraftHex(e.target.value)}
+                                        className="w-12 h-8 rounded-lg border border-white/30 bg-transparent"
+                                    />
+                                </div>
+                                <button
+                                    className="glass-btn primary w-full py-3 text-xs font-bold"
+                                    onClick={async () => {
+                                        setManageError(null);
+                                        try {
+                                            const updated = await patchImportedBook(manageBook.id, {
+                                                coverHex: coverDraftHex,
+                                                coverImage: coverDraftImage ?? undefined
+                                            });
+                                            if (!updated) throw new Error('保存失败');
+                                            setManageBook(updated);
+                                        } catch (e) {
+                                            setManageError(e instanceof Error ? e.message : '封面保存失败');
+                                        }
+                                    }}
+                                >
+                                    Save Cover
+                                </button>
+                            </div>
+                        )}
+
+                        {showMoveManage && (
+                            <div className="mt-4 space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <div className="text-xs font-bold opacity-60">Folder</div>
+                                    <button
+                                        className="glass-btn px-3 py-1.5 text-xs font-bold"
+                                        onClick={() => { setShowFolderCreate(true); setFolderDraftName(''); setFolderDraftParentId(null); }}
+                                    >
+                                        New Folder
+                                    </button>
+                                </div>
+                                <select
+                                    className="glass-card-sm w-full px-3 py-3 text-xs font-bold outline-none"
+                                    value={manageBook.folderId ?? ''}
+                                    onChange={async (e) => {
+                                        setManageError(null);
+                                        const nextFolderId = e.target.value || null;
+                                        try {
+                                            const updated = await patchImportedBook(manageBook.id, { folderId: nextFolderId });
+                                            if (!updated) throw new Error('移动失败');
+                                            setManageBook(updated);
+                                        } catch (err) {
+                                            setManageError(err instanceof Error ? err.message : '移动失败');
+                                        }
+                                    }}
+                                >
+                                    <option value="">(No Folder)</option>
+                                    {folders.map(f => (
+                                        <option key={f.id} value={f.id}>{f.name}</option>
+                                    ))}
+                                </select>
+
+                                {showFolderCreate && (
+                                    <div className="space-y-2">
+                                        <input
+                                            value={folderDraftName}
+                                            onChange={(e) => setFolderDraftName(e.target.value)}
+                                            placeholder="Folder name"
+                                            className="glass-card-sm w-full px-3 py-3 text-xs font-bold outline-none"
+                                        />
+                                        <select
+                                            className="glass-card-sm w-full px-3 py-3 text-xs font-bold outline-none"
+                                            value={folderDraftParentId ?? ''}
+                                            onChange={(e) => setFolderDraftParentId(e.target.value || null)}
+                                        >
+                                            <option value="">(Root)</option>
+                                            {folders.map(f => (
+                                                <option key={f.id} value={f.id}>{f.name}</option>
+                                            ))}
+                                        </select>
+                                        <button
+                                            className="glass-btn primary w-full py-3 text-xs font-bold"
+                                            onClick={async () => {
+                                                setManageError(null);
+                                                try {
+                                                    const folder = await createFolder(folderDraftName, folderDraftParentId);
+                                                    setFolders(prev => [folder, ...prev]);
+                                                    setShowFolderCreate(false);
+                                                } catch (e) {
+                                                    setManageError(e instanceof Error ? e.message : '创建文件夹失败');
+                                                }
+                                            }}
+                                        >
+                                            Create
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {showDeleteConfirm && (
+                            <div className="mt-4 space-y-3">
+                                <div className="text-xs opacity-70">
+                                    删除将移除书籍、封面与阅读数据（进度/标注/章节）。此操作不可撤销。
+                                </div>
+                                <button
+                                    className="glass-btn primary w-full py-3 text-xs font-bold bg-red-500/90"
+                                    onClick={async () => {
+                                        setManageError(null);
+                                        try {
+                                            await deleteImportedBook(manageBook.id);
+                                            storageAdapter.deleteBookData(manageBook.id);
+                                            setBooks(prev => prev.filter(b => b.id !== manageBook.id));
+                                            setShowBookManage(false);
+                                        } catch (e) {
+                                            setManageError(e instanceof Error ? e.message : '删除失败');
+                                        }
+                                    }}
+                                >
+                                    Confirm Delete
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
 
 // --- Sub-Components for Views ---
 
-const Bookshelf: React.FC<{ books: Book[], onOpen: (b: Book) => void; onImport: () => void }> = ({ books, onOpen, onImport }) => {
-    if (!books.length) return null;
-    const continueProgress = storageAdapter.loadProgress(books[0].id) || books[0].progress;
+const Bookshelf: React.FC<{
+    books: Book[];
+    folders: Folder[];
+    activeFolderId: string | null;
+    onSetActiveFolder: (id: string | null) => void;
+    onOpen: (b: Book) => void;
+    onImport: () => void;
+    onManage: (b: Book) => void;
+}> = ({ books, folders, activeFolderId, onSetActiveFolder, onOpen, onImport, onManage }) => {
+    const collectDescendants = (folderId: string): Set<string> => {
+        const set = new Set<string>([folderId]);
+        let changed = true;
+        while (changed) {
+            changed = false;
+            for (const f of folders) {
+                const pid = f.parentId ?? null;
+                if (pid && set.has(pid) && !set.has(f.id)) {
+                    set.add(f.id);
+                    changed = true;
+                }
+            }
+        }
+        return set;
+    };
+
+    const visibleBooks = (() => {
+        if (!activeFolderId) return books;
+        const allowed = collectDescendants(activeFolderId);
+        return books.filter(b => b.folderId && allowed.has(b.folderId));
+    })();
+
+    const continueBook = visibleBooks[0] ?? null;
+    const continueProgress = continueBook ? (storageAdapter.loadProgress(continueBook.id) || continueBook.progress) : 0;
+
+    const coverStyle = (book: Book): React.CSSProperties | undefined => {
+        if (book.coverImage) {
+            return {
+                backgroundImage: `url(${book.coverImage})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat'
+            };
+        }
+        if (book.coverHex) {
+            return { background: book.coverHex, backgroundImage: 'none' };
+        }
+        return undefined;
+    };
     return (
     <div className="animate-fade-in-up space-y-6">
         <header className="flex justify-between items-center mt-1">
@@ -196,22 +476,44 @@ const Bookshelf: React.FC<{ books: Book[], onOpen: (b: Book) => void; onImport: 
             </div>
         </header>
 
+        <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+            <button
+                className={`glass-btn px-4 py-2 text-[10px] font-bold whitespace-nowrap ${activeFolderId === null ? 'bg-[var(--text-main)] text-[var(--text-inverse)]' : 'opacity-70 hover:opacity-100'}`}
+                onClick={() => onSetActiveFolder(null)}
+            >
+                All
+            </button>
+            {folders.filter(f => !f.parentId).map(f => (
+                <button
+                    key={f.id}
+                    className={`glass-btn px-4 py-2 text-[10px] font-bold whitespace-nowrap ${activeFolderId === f.id ? 'bg-[var(--text-main)] text-[var(--text-inverse)]' : 'opacity-70 hover:opacity-100'}`}
+                    onClick={() => onSetActiveFolder(f.id)}
+                >
+                    {f.name}
+                </button>
+            ))}
+        </div>
+
         {/* Recently Read */}
+        {continueBook && (
         <div>
             <h2 className="text-xs font-bold opacity-50 uppercase tracking-widest mb-3 pl-1">Continue</h2>
             <div 
                 className="glass-card p-0 flex flex-col cursor-pointer group relative overflow-hidden h-[250px]"
-                onClick={() => onOpen(books[0])}
+                onClick={() => onOpen(continueBook)}
             >
                 {/* Sheen overlay */}
                 <div className="absolute inset-0 bg-gradient-to-br from-white/30 to-transparent z-0 pointer-events-none"></div>
                 
                 <div className="relative z-10 flex flex-col h-full p-5">
                     <div className="flex gap-5 flex-1 items-start">
-                        <div className={`w-28 h-40 rounded-xl shadow-xl ${books[0].coverColor} shrink-0 transform group-hover:scale-105 transition-transform duration-500 ease-out rotate-1 group-hover:rotate-0 border border-white/10`}></div>
+                        <div
+                            className={`w-28 h-40 rounded-xl shadow-xl ${continueBook.coverColor} shrink-0 transform group-hover:scale-105 transition-transform duration-500 ease-out rotate-1 group-hover:rotate-0 border border-white/10`}
+                            style={coverStyle(continueBook)}
+                        />
                         <div className="pt-2">
-                             <h3 className="font-bold text-xl leading-tight mb-1 line-clamp-2">{books[0].title}</h3>
-                             <p className="text-sm opacity-60 font-medium">{books[0].author}</p>
+                             <h3 className="font-bold text-xl leading-tight mb-1 line-clamp-2">{continueBook.title}</h3>
+                             <p className="text-sm opacity-60 font-medium">{continueBook.author}</p>
                         </div>
                     </div>
                     
@@ -229,13 +531,21 @@ const Bookshelf: React.FC<{ books: Book[], onOpen: (b: Book) => void; onImport: 
                 </div>
             </div>
         </div>
+        )}
 
         <div>
             <h2 className="text-xs font-bold opacity-50 uppercase tracking-widest mb-3 pl-1">Shelf</h2>
             <div className="grid grid-cols-2 gap-3">
-                {books.map(book => (
-                    <div key={book.id} className="glass-card-sm p-4 cursor-pointer group flex flex-col items-center text-center gap-3" onClick={() => onOpen(book)}>
-                        <div className={`w-20 h-28 rounded-lg shadow-lg ${book.coverColor} group-hover:-translate-y-2 transition-transform duration-300 border border-white/10`}></div>
+                {visibleBooks.map(book => (
+                    <div key={book.id} className="glass-card-sm p-4 cursor-pointer group flex flex-col items-center text-center gap-3 relative" onClick={() => onOpen(book)}>
+                        <button
+                            className="absolute top-2 right-2 w-8 h-8 glass-btn rounded-full flex items-center justify-center opacity-60 hover:opacity-100"
+                            onClick={(e) => { e.stopPropagation(); onManage(book); }}
+                            aria-label="Manage book"
+                        >
+                            <MoreHorizontal size={16} />
+                        </button>
+                        <div className={`w-20 h-28 rounded-lg shadow-lg ${book.coverColor} group-hover:-translate-y-2 transition-transform duration-300 border border-white/10`} style={coverStyle(book)}></div>
                         <div>
                              <h4 className="font-bold text-sm leading-tight line-clamp-1">{book.title}</h4>
                              <p className="text-[10px] opacity-60 mt-0.5">{book.author}</p>

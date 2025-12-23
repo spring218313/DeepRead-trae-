@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { importBookFromFile, listImportedBooks } from './bookImport'
+import { importBookFromFile, listImportedBooks, createFolder, listFolders, patchImportedBook, deleteImportedBook } from './bookImport'
 
 vi.mock('pdfjs-dist', () => {
   return {
@@ -68,9 +68,37 @@ describe('book import', () => {
   })
 
   it('imports EPUB via mocked parser', async () => {
-    const file = new File([new Uint8Array([1, 2, 3])], 'a.epub', { type: 'application/epub+zip' })
+    const file = new File([new Uint8Array([0x50, 0x4b, 0x03, 0x04, 1, 2, 3])], 'a.epub', { type: 'application/epub+zip' })
     const book = await importBookFromFile(file, () => {})
     expect(book.content.join(' ')).toMatch(/Chapter 1/)
   })
-})
 
+  it('rejects invalid EPUB container', async () => {
+    const file = new File([new Uint8Array([0, 1, 2, 3])], 'bad.epub', { type: 'application/epub+zip' })
+    await expect(importBookFromFile(file, () => {})).rejects.toThrow(/EPUB格式校验失败/)
+  })
+
+  it('persists folders and book metadata changes', async () => {
+    const folder = await createFolder('MyFolder', null)
+    const folders = await listFolders()
+    expect(folders.some(f => f.id === folder.id)).toBe(true)
+
+    const file = new File(['Hello'], 'MetaBook.txt', { type: 'text/plain' })
+    const book = await importBookFromFile(file, () => {})
+    const updated = await patchImportedBook(book.id, { folderId: folder.id, coverHex: '#ff0000', coverImage: 'data:image/png;base64,AA==' })
+    expect(updated?.folderId).toBe(folder.id)
+
+    const list = await listImportedBooks()
+    const found = list.find(b => b.id === book.id)
+    expect(found?.coverHex).toBe('#ff0000')
+    expect(found?.folderId).toBe(folder.id)
+  })
+
+  it('deletes imported book from storage', async () => {
+    const file = new File(['Hello'], 'DeleteBook.txt', { type: 'text/plain' })
+    const book = await importBookFromFile(file, () => {})
+    await deleteImportedBook(book.id)
+    const list = await listImportedBooks()
+    expect(list.some(b => b.id === book.id)).toBe(false)
+  })
+})

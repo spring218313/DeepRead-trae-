@@ -1,4 +1,4 @@
-import { Book } from './types'
+import { Book, Folder } from './types'
 import { storageAdapter } from './storageAdapter'
 
 type ImportFormat = 'txt' | 'pdf' | 'epub'
@@ -10,8 +10,9 @@ export type ImportProgress = {
 }
 
 const IDB_NAME = 'deepread_local'
-const IDB_VERSION = 1
+const IDB_VERSION = 2
 const BOOK_STORE = 'books'
+const FOLDER_STORE = 'folders'
 
 const gradients = [
   'bg-gradient-to-br from-blue-400 to-cyan-300 backdrop-blur-md',
@@ -53,17 +54,20 @@ function openBooksDB(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(BOOK_STORE)) {
         db.createObjectStore(BOOK_STORE, { keyPath: 'id' })
       }
+      if (!db.objectStoreNames.contains(FOLDER_STORE)) {
+        db.createObjectStore(FOLDER_STORE, { keyPath: 'id' })
+      }
     }
     req.onsuccess = () => resolve(req.result)
     req.onerror = () => reject(req.error ?? new Error('Failed to open IndexedDB'))
   })
 }
 
-async function withStore<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+async function withStore<T>(storeName: string, mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
   const db = await openBooksDB()
   return await new Promise((resolve, reject) => {
-    const tx = db.transaction(BOOK_STORE, mode)
-    const store = tx.objectStore(BOOK_STORE)
+    const tx = db.transaction(storeName, mode)
+    const store = tx.objectStore(storeName)
     const req = run(store)
     req.onsuccess = () => resolve(req.result)
     req.onerror = () => reject(req.error ?? new Error('IndexedDB request failed'))
@@ -73,11 +77,29 @@ async function withStore<T>(mode: IDBTransactionMode, run: (store: IDBObjectStor
 }
 
 async function idbPutBook(book: Book): Promise<void> {
-  await withStore('readwrite', (store) => store.put(book) as unknown as IDBRequest<void>)
+  await withStore(BOOK_STORE, 'readwrite', (store) => store.put(book) as unknown as IDBRequest<void>)
 }
 
 async function idbGetAllBooks(): Promise<Book[]> {
-  const res = await withStore('readonly', (store) => store.getAll() as unknown as IDBRequest<Book[]>)
+  const res = await withStore(BOOK_STORE, 'readonly', (store) => store.getAll() as unknown as IDBRequest<Book[]>)
+  return Array.isArray(res) ? res : []
+}
+
+async function idbGetBook(bookId: string): Promise<Book | null> {
+  const res = await withStore(BOOK_STORE, 'readonly', (store) => store.get(bookId) as unknown as IDBRequest<Book | undefined>)
+  return res ? (res as Book) : null
+}
+
+async function idbDeleteBook(bookId: string): Promise<void> {
+  await withStore(BOOK_STORE, 'readwrite', (store) => store.delete(bookId) as unknown as IDBRequest<void>)
+}
+
+async function idbPutFolder(folder: Folder): Promise<void> {
+  await withStore(FOLDER_STORE, 'readwrite', (store) => store.put(folder) as unknown as IDBRequest<void>)
+}
+
+async function idbGetAllFolders(): Promise<Folder[]> {
+  const res = await withStore(FOLDER_STORE, 'readonly', (store) => store.getAll() as unknown as IDBRequest<Folder[]>)
   return Array.isArray(res) ? res : []
 }
 
@@ -113,6 +135,31 @@ function readFileArrayBuffer(file: Blob): Promise<ArrayBuffer> {
     reader.onerror = () => reject(reader.error ?? new Error('Failed to read file as arrayBuffer'))
     reader.readAsArrayBuffer(file)
   })
+}
+
+async function validateEpub(file: File): Promise<void> {
+  const name = file.name.toLowerCase()
+  const isExt = name.endsWith('.epub')
+  const isMime = file.type === 'application/epub+zip' || file.type === 'application/octet-stream' || file.type === ''
+  if (!isExt && !isMime) {
+    throw new Error('EPUB格式校验失败：文件扩展名或类型不匹配')
+  }
+  const head = await readFileArrayBuffer(file.slice(0, 4))
+  const u8 = new Uint8Array(head)
+  const isZip = u8[0] === 0x50 && u8[1] === 0x4b
+  if (!isZip) {
+    throw new Error('EPUB格式校验失败：文件不是有效的ZIP容器')
+  }
+}
+
+function htmlToText(input: unknown): string {
+  if (!input) return ''
+  if (typeof input === 'string') {
+    return input.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+  }
+  const doc = input as any
+  const text = (doc?.body?.textContent ?? doc?.documentElement?.textContent ?? '').toString()
+  return text.replace(/\s+/g, ' ').trim()
 }
 
 async function parseTxt(file: File, onProgress: (p: ImportProgress) => void): Promise<string[]> {
@@ -156,30 +203,57 @@ async function parsePdf(file: File, onProgress: (p: ImportProgress) => void): Pr
 }
 
 async function parseEpub(file: File, onProgress: (p: ImportProgress) => void): Promise<string[]> {
-  onProgress({ phase: 'read', percent: 10, message: '读取EPUB' })
-  const data = await readFileArrayBuffer(file)
-  onProgress({ phase: 'parse', percent: 25, message: '解析EPUB' })
+  try {
+    onProgress({ phase: 'read', percent: 10, message: '读取EPUB' })
+    await validateEpub(file)
+    const data = await readFileArrayBuffer(file)
+    onProgress({ phase: 'parse', percent: 25, message: '解析EPUB' })
 
-  const epubjs = await import('epubjs')
-  const ePub = (epubjs as any).default ?? epubjs
-  const book = ePub(data)
-  await book.ready
+    const epubjs = await import('epubjs')
+    const ePub = (epubjs as any).default ?? epubjs
+    let book: any
+    try {
+      book = typeof ePub === 'function' ? ePub(data) : ePub
+    } catch {
+      book = typeof ePub === 'function' ? ePub() : ePub
+      if (typeof book?.open === 'function') {
+        book.open(data, 'binary')
+      } else {
+        throw new Error('初始化解析器失败')
+      }
+    }
+    await book.ready
 
-  const spineItems = book.spine?.spineItems ?? []
-  const total = spineItems.length || 1
-  const out: string[] = []
+    const spineItems = book.spine?.spineItems ?? book.spine?.items ?? []
+    const total = spineItems.length || 1
+    const out: string[] = []
 
-  for (let i = 0; i < spineItems.length; i++) {
-    const item = spineItems[i]
-    const doc = await item.load(book.load.bind(book))
-    const text = (doc?.documentElement?.textContent ?? '').replace(/\s+/g, ' ').trim()
-    if (text) out.push(text)
-    item.unload()
-    const percent = 25 + Math.round(((i + 1) / total) * 55)
-    onProgress({ phase: 'parse', percent, message: `解析EPUB ${i + 1}/${total}` })
+    for (let i = 0; i < spineItems.length; i++) {
+      const item = spineItems[i]
+      let doc: any = null
+      try {
+        doc = await item.load(book.load.bind(book))
+      } catch (e) {
+        try {
+          doc = await item.load(book.load)
+        } catch {
+          throw e instanceof Error ? e : new Error('章节加载失败')
+        }
+      }
+      const text = htmlToText(doc)
+      if (text) out.push(text)
+      try { item.unload() } catch {}
+      const percent = 25 + Math.round(((i + 1) / total) * 55)
+      onProgress({ phase: 'parse', percent, message: `解析EPUB ${i + 1}/${total}` })
+    }
+
+    const paras = ensureNonEmptyParagraphs(out)
+    if (!paras.length) throw new Error('未解析到有效正文内容')
+    return paras
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : '未知错误'
+    throw new Error(`EPUB解析失败：${msg}`)
   }
-
-  return ensureNonEmptyParagraphs(out)
 }
 
 function readImportedBooksFromWebStorage(): Book[] {
@@ -232,6 +306,7 @@ export async function importBookFromFile(
     title: title || 'Untitled',
     author: fmt.toUpperCase(),
     coverColor: pickCoverColor(title || file.name),
+    folderId: null,
     progress: 0,
     totalParams: content.length,
     content
@@ -248,6 +323,89 @@ export async function importBookFromFile(
 
   onProgress({ phase: 'done', percent: 100, message: '导入完成' })
   return book
+}
+
+export async function upsertImportedBook(next: Book): Promise<void> {
+  try {
+    await idbPutBook(next)
+  } catch {}
+  writeImportedBookToWebStorage(next)
+  const event = new Event('deepread-imported')
+  window.dispatchEvent(event)
+}
+
+export async function patchImportedBook(bookId: string, patch: Partial<Book>): Promise<Book | null> {
+  let current: Book | null = null
+  try {
+    current = await idbGetBook(bookId)
+  } catch {
+    current = null
+  }
+  if (!current && 'localStorage' in globalThis) {
+    const raw = localStorage.getItem(`dr_imported_book_${bookId}`)
+    if (raw) {
+      try {
+        current = JSON.parse(raw) as Book
+      } catch {}
+    }
+  }
+  if (!current) return null
+  const merged: Book = { ...current, ...patch, id: current.id }
+  await upsertImportedBook(merged)
+  return merged
+}
+
+export async function deleteImportedBook(bookId: string): Promise<void> {
+  try {
+    await idbDeleteBook(bookId)
+  } catch {}
+  if ('localStorage' in globalThis) {
+    const idxRaw = localStorage.getItem('dr_imported_books_index')
+    const idx = idxRaw ? (JSON.parse(idxRaw) as string[]) : []
+    localStorage.setItem('dr_imported_books_index', JSON.stringify(idx.filter(x => x !== bookId)))
+    localStorage.removeItem(`dr_imported_book_${bookId}`)
+  }
+  const event = new Event('deepread-imported')
+  window.dispatchEvent(event)
+}
+
+export async function listFolders(): Promise<Folder[]> {
+  try {
+    const rows = await idbGetAllFolders()
+    return rows
+  } catch {
+    if (!('localStorage' in globalThis)) return []
+    const raw = localStorage.getItem('dr_folders')
+    if (!raw) return []
+    try {
+      const parsed = JSON.parse(raw) as Folder[]
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  }
+}
+
+export async function createFolder(name: string, parentId?: string | null): Promise<Folder> {
+  const folder: Folder = {
+    id: safeId(),
+    name: name.trim() || 'Untitled',
+    parentId: parentId ?? null,
+    createdAt: new Date().toISOString()
+  }
+  try {
+    await idbPutFolder(folder)
+  } catch {
+    if ('localStorage' in globalThis) {
+      const raw = localStorage.getItem('dr_folders')
+      const list = raw ? (JSON.parse(raw) as Folder[]) : []
+      const next = Array.isArray(list) ? [folder, ...list] : [folder]
+      localStorage.setItem('dr_folders', JSON.stringify(next))
+    }
+  }
+  const event = new Event('deepread-imported')
+  window.dispatchEvent(event)
+  return folder
 }
 
 export async function listImportedBooks(): Promise<Book[]> {

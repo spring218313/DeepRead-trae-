@@ -217,6 +217,21 @@ export const storageAdapter = {
       return false
     }
   },
+  deleteBookData: (bookId: string) => {
+    const keys = [
+      hlKey(bookId),
+      anKey(bookId),
+      prKey(bookId),
+      nbDraftKey(bookId),
+      nbStrokesKey(bookId),
+      chKey(bookId),
+      chBackupKey(bookId),
+      chBackupMetaKey(bookId)
+    ]
+    keys.forEach(k => {
+      try { localStorage.removeItem(k) } catch {}
+    })
+  },
   exportAll: (): string => {
     const keys = Object.keys(localStorage).filter(k => k.startsWith('dr_'))
     const data: Record<string, unknown> = {}
