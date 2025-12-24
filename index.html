@@ -98,24 +98,25 @@
 
         /* --- Liquid Glass Components --- */
 
-        /* Common Glass Base */
-        .glass-base {
-            backdrop-filter: blur(var(--glass-blur)) saturate(140%); /* High saturation for liquid look */
+        .glass-card {
+            backdrop-filter: blur(var(--glass-blur)) saturate(140%);
             -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
             background: var(--glass-bg);
+            border-radius: var(--radius-lg);
             border: 1px solid var(--glass-border);
-            /* Inset shadow creates the "thickness" of the glass edge */
             box-shadow: 
                 var(--glass-shadow), 
                 inset 0 1px 1px 0 var(--glass-highlight),
                 inset 0 0 0 1px rgba(255,255,255,0.05);
+            color: var(--text-main);
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
             position: relative;
             overflow: hidden;
-            transform: translateZ(0); /* Hardware acceleration */
+            transform: translateZ(0);
         }
         
         /* Sheen/Glare Effect to simulate curved liquid surface */
-        .glass-base::before {
+        .glass-card::before {
             content: '';
             position: absolute;
             top: 0; left: 0; right: 0; height: 40%;
@@ -123,20 +124,7 @@
             pointer-events: none;
             border-top-left-radius: inherit;
             border-top-right-radius: inherit;
-        }
-
-        .glass-card {
-            extend: .glass-base;
-            backdrop-filter: blur(var(--glass-blur)) saturate(140%);
-            -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
-            background: var(--glass-bg);
-            border-radius: var(--radius-lg);
-            border: 1px solid var(--glass-border);
-            box-shadow: var(--glass-shadow), inset 0 1px 0 0 var(--glass-highlight);
-            color: var(--text-main);
-            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
-            position: relative;
-            overflow: hidden;
+            z-index: 1;
         }
         
         /* Add slight sheen */
