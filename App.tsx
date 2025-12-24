@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Book, Tab, UserNote, Folder } from './types';
 import { Reader } from './components/Reader';
 import { BookOpen, Compass, User, Library as LibraryIcon, Search, Plus, MoreHorizontal, Share, Settings, Sparkles, TrendingUp, Heart, Play, Moon, Sun, Smartphone, FolderPlus, Edit3, ArrowLeft, ChevronRight, Inbox, Folder as FolderIcon, Copy } from 'lucide-react';
@@ -73,6 +74,7 @@ async function upsertUserProfile(userId: string, patch: Partial<UserProfileRow>)
 }
 
 export default function App() {
+    const { t } = useTranslation();
     const [activeTab, setActiveTab] = useState<Tab>('Shelf');
     const [readingBook, setReadingBook] = useState<Book | null>(null);
     const [notes, setNotes] = useState<UserNote[]>([]);
@@ -212,7 +214,7 @@ export default function App() {
 
     const startImport = (folderId?: string | null) => {
         setImportError(null);
-        setImportProgress({ phase: 'select', percent: 0, message: '选择文件' });
+        setImportProgress({ phase: 'select', percent: 0, message: t('import.select_phase') });
         setShowImport(true);
         queueMicrotask(() => {
             (fileInputRef.current as any).__deepreadFolderId = folderId ?? null;
@@ -224,7 +226,9 @@ export default function App() {
         setImportError(null);
         try {
             const folderId = (fileInputRef.current as any)?.__deepreadFolderId ?? null;
-            const book = await importBookFromFile(file, setImportProgress, folderId);
+            const book = await importBookFromFile(file, (p) => {
+                setImportProgress({ ...p, message: p.message === 'Importing' ? t('import.importing') : p.message });
+            }, folderId);
             setBooks(prev => {
                 const map = new Map<string, Book>();
                 [book, ...prev].forEach(b => map.set(b.id, b));
@@ -232,7 +236,7 @@ export default function App() {
             });
             setShowImport(false);
         } catch (e) {
-            const msg = e instanceof Error ? e.message : '导入失败'
+            const msg = e instanceof Error ? e.message : t('import.failed')
             setImportError(msg);
         }
     };
@@ -459,12 +463,12 @@ export default function App() {
                     <div className="absolute inset-0 bg-black/20" onClick={() => setShowImport(false)} />
                     <div className="relative glass-modal w-full max-w-[420px] p-5 animate-fade-in-up">
                         <div className="flex items-center justify-between mb-3">
-                            <h2 className="text-base font-extrabold tracking-tight">Import Book</h2>
+                            <h2 className="text-base font-extrabold tracking-tight">{t('import.title')}</h2>
                             <button className="w-9 h-9 glass-btn rounded-full flex items-center justify-center" onClick={() => setShowImport(false)}>
                                 ✕
                             </button>
                         </div>
-                        <p className="text-xs opacity-60 mb-4">支持 `EPUB` / `PDF` / `TXT`，导入后离线可用。</p>
+                        <p className="text-xs opacity-60 mb-4">{t('import.description')}</p>
 
                         <input
                             ref={fileInputRef}
@@ -481,17 +485,17 @@ export default function App() {
 
                         <div className="flex items-center gap-3">
                             <button className="glass-btn primary px-5 py-2 text-xs font-bold" onClick={() => fileInputRef.current?.click()}>
-                                Choose File
+                                {t('import.choose_file')}
                             </button>
                             <button className="glass-btn px-5 py-2 text-xs font-bold" onClick={() => setShowImport(false)}>
-                                Cancel
+                                {t('common.cancel')}
                             </button>
                         </div>
 
                         {importProgress && (
                             <div className="mt-4">
                                 <div className="flex justify-between items-center mb-2 text-xs opacity-70">
-                                    <span>{importProgress.message ?? 'Importing'}</span>
+                                    <span>{importProgress.message ?? t('import.importing')}</span>
                                     <span>{importProgress.percent}%</span>
                                 </div>
                                 <div className="liquid-progress-container h-3 w-full">
@@ -514,17 +518,16 @@ export default function App() {
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-5">
                     <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowFolderDeleteConfirm(false)} />
                     <div className="relative glass-modal w-full max-w-[320px] p-6 animate-fade-in text-center">
-                        <h2 className="text-lg font-black mb-2">Delete Folder?</h2>
+                        <h2 className="text-lg font-black mb-2">{t('shelf.delete_folder')}</h2>
                         <p className="text-sm opacity-60 mb-6">
-                            Are you sure you want to delete <span className="font-bold text-[var(--text-main)]">"{folderToDelete.name}"</span>? 
-                            The books inside will be moved to Uncategorized.
+                            {t('shelf.delete_folder_confirm', { name: folderToDelete.name })}
                         </p>
                         <div className="flex gap-3">
                             <button 
                                 onClick={() => setShowFolderDeleteConfirm(false)}
                                 className="flex-1 py-3 glass-btn text-xs font-black uppercase tracking-widest opacity-60 hover:opacity-100"
                             >
-                                Cancel
+                                {t('common.cancel')}
                             </button>
                             <button 
                                 onClick={async () => {
@@ -534,7 +537,7 @@ export default function App() {
                                 }}
                                 className="flex-1 py-3 glass-btn text-xs font-black uppercase tracking-widest text-red-500 bg-red-500/10 border-red-500/20 hover:bg-red-500/20"
                             >
-                                Delete
+                                {t('common.delete')}
                             </button>
                         </div>
                     </div>
@@ -546,12 +549,12 @@ export default function App() {
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-5">
                     <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowFolderRename(false)} />
                     <div className="relative glass-modal w-full max-w-[320px] p-6 animate-fade-in">
-                        <h2 className="text-lg font-black mb-4 text-center">Rename Folder</h2>
+                        <h2 className="text-lg font-black mb-4 text-center">{t('shelf.rename_folder')}</h2>
                         <input 
                             type="text"
                             value={renameDraftName}
                             onChange={(e) => setRenameDraftName(e.target.value)}
-                            placeholder="Folder Name"
+                            placeholder={t('shelf.folder_name')}
                             className="w-full bg-black/5 border-none rounded-xl px-4 py-3 text-sm font-bold mb-6 focus:ring-2 focus:ring-blue-500/20 outline-none text-[var(--text-main)]"
                             autoFocus
                             onKeyDown={(e) => {
@@ -570,7 +573,7 @@ export default function App() {
                                 onClick={() => setShowFolderRename(false)}
                                 className="flex-1 py-3 glass-btn text-xs font-black uppercase tracking-widest opacity-60 hover:opacity-100"
                             >
-                                Cancel
+                                {t('common.cancel')}
                             </button>
                             <button 
                                 onClick={async () => {
@@ -582,7 +585,7 @@ export default function App() {
                                 }}
                                 className="flex-1 py-3 glass-btn text-xs font-black uppercase tracking-widest text-blue-500 bg-blue-500/10 border-blue-500/20 hover:bg-blue-500/20"
                             >
-                                Save
+                                {t('common.save')}
                             </button>
                         </div>
                     </div>
@@ -618,19 +621,19 @@ export default function App() {
                                 }}
                             >
                                 <Heart size={14} fill={userProfile?.favorite_book_ids?.includes(manageBook.id) ? 'currentColor' : 'none'} />
-                                {userProfile?.favorite_book_ids?.includes(manageBook.id) ? 'Unfavorite' : 'Favorite'}
+                                {userProfile?.favorite_book_ids?.includes(manageBook.id) ? t('shelf.unfavorite') : t('shelf.favorite')}
                             </button>
                             <button
                                 className="glass-btn px-4 py-3 text-xs font-bold flex items-center justify-center gap-2"
                                 onClick={() => {
-                                    const text = `I'm reading "${manageBook.title}" by ${manageBook.author} on DeepRead!`;
+                                    const text = t('shelf.share_text', { title: manageBook.title, author: manageBook.author });
                                     navigator.clipboard.writeText(text);
-                                    setManageError('Link copied to clipboard');
+                                    setManageError(t('shelf.link_copied'));
                                     setTimeout(() => setManageError(null), 2000);
                                 }}
                             >
                                 <Share size={14} />
-                                Share
+                                {t('common.share')}
                             </button>
                         </div>
                         <div className="grid grid-cols-3 gap-3">
@@ -638,19 +641,19 @@ export default function App() {
                                 className="glass-btn px-4 py-3 text-xs font-bold"
                                 onClick={() => { setShowCoverManage(true); setShowMoveManage(false); setShowFolderCreate(false); setShowDeleteConfirm(false); }}
                             >
-                                Cover
+                                {t('shelf.cover')}
                             </button>
                             <button
                                 className="glass-btn px-4 py-3 text-xs font-bold"
                                 onClick={() => { setShowMoveManage(true); setShowCoverManage(false); setShowFolderCreate(false); setShowDeleteConfirm(false); }}
                             >
-                                Move
+                                {t('shelf.move')}
                             </button>
                             <button
                                 className="glass-btn px-4 py-3 text-xs font-bold text-red-600"
                                 onClick={() => { setShowDeleteConfirm(true); setShowCoverManage(false); setShowMoveManage(false); setShowFolderCreate(false); }}
                             >
-                                Delete
+                                {t('common.delete')}
                             </button>
                         </div>
 
@@ -661,9 +664,9 @@ export default function App() {
                         {showCoverManage && (
                             <div className="mt-4 space-y-3">
                                 <div className="flex items-center justify-between">
-                                    <div className="text-xs font-bold opacity-60">Cover Image</div>
+                                    <div className="text-xs font-bold opacity-60">{t('shelf.cover')}</div>
                                     <button className="glass-btn px-3 py-1.5 text-xs font-bold" onClick={() => coverFileInputRef.current?.click()}>
-                                        Upload
+                                        {t('shelf.upload_cover')}
                                     </button>
                                 </div>
                                 <input
@@ -703,21 +706,21 @@ export default function App() {
                                             };
                                             img.src = typeof reader.result === 'string' ? reader.result : '';
                                         };
-                                        reader.onerror = () => setManageError('封面图片读取失败');
+                                        reader.onerror = () => setManageError(t('common.error'));
                                         reader.readAsDataURL(file);
                                         e.target.value = '';
                                     }}
                                 />
                                 {coverDraftImage && (
                                     <div className="flex items-center justify-between">
-                                        <div className="text-xs opacity-60 truncate">已选择封面图片</div>
+                                        <div className="text-xs opacity-60 truncate">{t('shelf.cover')}</div>
                                         <button className="glass-btn px-3 py-1.5 text-xs font-bold" onClick={() => setCoverDraftImage(null)}>
-                                            Remove
+                                            {t('shelf.remove_cover')}
                                         </button>
                                     </div>
                                 )}
                                 <div className="flex items-center justify-between">
-                                    <div className="text-xs font-bold opacity-60">Cover Color</div>
+                                    <div className="text-xs font-bold opacity-60">{t('shelf.cover_color')}</div>
                                     <input
                                         type="color"
                                         value={coverDraftHex}
@@ -734,14 +737,14 @@ export default function App() {
                                                 coverHex: coverDraftHex,
                                                 coverImage: coverDraftImage ?? undefined
                                             });
-                                            if (!updated) throw new Error('保存失败');
+                                            if (!updated) throw new Error(t('common.error'));
                                             setManageBook(updated);
                                         } catch (e) {
-                                            setManageError(e instanceof Error ? e.message : '封面保存失败');
+                                            setManageError(e instanceof Error ? e.message : t('common.error'));
                                         }
                                     }}
                                 >
-                                    Save Cover
+                                    {t('shelf.save_cover')}
                                 </button>
                             </div>
                         )}
@@ -749,12 +752,12 @@ export default function App() {
                         {showMoveManage && (
                             <div className="mt-4 space-y-4">
                                 <div className="flex items-center justify-between px-1">
-                                    <div className="text-[10px] font-black opacity-40 uppercase tracking-[0.2em]">Move to Folder</div>
+                                    <div className="text-[10px] font-black opacity-40 uppercase tracking-[0.2em]">{t('shelf.move')}</div>
                                     <button
                                         className="glass-btn px-3 py-1.5 text-[10px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-500"
                                         onClick={() => { setShowFolderCreate(true); setFolderDraftName(''); setFolderDraftParentId(null); }}
                                     >
-                                        + New Folder
+                                        + {t('shelf.create_folder')}
                                     </button>
                                 </div>
                                 
@@ -765,14 +768,14 @@ export default function App() {
                                             try {
                                                 const updated = await patchImportedBook(manageBook.id, { folderId: null });
                                                 if (updated) setManageBook(updated);
-                                            } catch (err) { setManageError('Move failed'); }
+                                            } catch (err) { setManageError(t('common.error')); }
                                         }}
                                     >
                                         <div className="flex items-center gap-3">
                                             <div className={`w-8 h-8 rounded-full flex items-center justify-center ${!manageBook.folderId ? 'bg-blue-500 text-white' : 'bg-white/5'}`}>
                                                 <Inbox size={14} />
                                             </div>
-                                            <span className="text-xs font-bold">Inbox (Uncategorized)</span>
+                                            <span className="text-xs font-bold">{t('shelf.uncategorized')}</span>
                                         </div>
                                         {!manageBook.folderId && <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />}
                                     </button>
@@ -785,7 +788,7 @@ export default function App() {
                                                 try {
                                                     const updated = await patchImportedBook(manageBook.id, { folderId: f.id });
                                                     if (updated) setManageBook(updated);
-                                                } catch (err) { setManageError('Move failed'); }
+                                                } catch (err) { setManageError(t('common.error')); }
                                             }}
                                         >
                                             <div className="flex items-center gap-3">
@@ -801,11 +804,11 @@ export default function App() {
 
                                 {showFolderCreate && (
                                     <div className="space-y-3 p-4 glass-card-sm border-dashed border-2 border-blue-500/20 bg-blue-500/5 animate-fade-in-up">
-                                        <div className="text-[10px] font-black opacity-40 uppercase tracking-widest mb-1">New Folder Name</div>
+                                        <div className="text-[10px] font-black opacity-40 uppercase tracking-widest mb-1">{t('shelf.folder_name')}</div>
                                         <input
                                             value={folderDraftName}
                                             onChange={(e) => setFolderDraftName(e.target.value)}
-                                            placeholder="e.g. Psychology, History..."
+                                            placeholder={t('shelf.folder_placeholder')}
                                             className="glass-card-sm w-full px-4 py-3 text-xs font-bold outline-none border-white/10 focus:border-blue-500/30 transition-colors"
                                             autoFocus
                                         />
@@ -814,7 +817,7 @@ export default function App() {
                                                 className="glass-btn flex-1 py-3 text-[10px] font-black uppercase tracking-widest opacity-60 hover:opacity-100"
                                                 onClick={() => setShowFolderCreate(false)}
                                             >
-                                                Cancel
+                                                {t('common.cancel')}
                                             </button>
                                             <button
                                                 className="glass-btn primary flex-1 py-3 text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-500/20"
@@ -826,11 +829,11 @@ export default function App() {
                                                         setFolders(prev => [folder, ...prev]);
                                                         setShowFolderCreate(false);
                                                     } catch (e) {
-                                                        setManageError(e instanceof Error ? e.message : '创建文件夹失败');
+                                                        setManageError(e instanceof Error ? e.message : t('common.error'));
                                                     }
                                                 }}
                                             >
-                                                Create
+                                                {t('common.confirm')}
                                             </button>
                                         </div>
                                     </div>
@@ -841,7 +844,7 @@ export default function App() {
                         {showDeleteConfirm && (
                             <div className="mt-4 space-y-3">
                                 <div className="text-xs opacity-70">
-                                    删除将移除书籍、封面与阅读数据（进度/标注/章节）。此操作不可撤销。
+                                    {t('shelf.delete_book_confirm', { name: manageBook.title })}
                                 </div>
                                 <button
                                     className="glass-btn primary w-full py-3 text-xs font-bold bg-red-500/90"
@@ -853,11 +856,11 @@ export default function App() {
                                             setBooks(prev => prev.filter(b => b.id !== manageBook.id));
                                             setShowBookManage(false);
                                         } catch (e) {
-                                            setManageError(e instanceof Error ? e.message : '删除失败');
+                                            setManageError(e instanceof Error ? e.message : t('common.error'));
                                         }
                                     }}
                                 >
-                                    Confirm Delete
+                                    {t('common.confirm')}
                                 </button>
                             </div>
                         )}
@@ -870,7 +873,7 @@ export default function App() {
                     <div className="absolute inset-0 bg-black/20" onClick={() => setShowNoteManage(false)} />
                     <div className="relative glass-modal w-full max-w-[420px] p-5 animate-fade-in-up" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-between mb-3">
-                            <h2 className="text-base font-extrabold tracking-tight truncate max-w-[260px]">Thought</h2>
+                            <h2 className="text-base font-extrabold tracking-tight truncate max-w-[260px]">{t('stories.thought')}</h2>
                             <button className="w-9 h-9 glass-btn rounded-full flex items-center justify-center" onClick={() => setShowNoteManage(false)}>
                                 ✕
                             </button>
@@ -880,13 +883,13 @@ export default function App() {
                                 className="glass-btn px-4 py-3 text-xs font-bold"
                                 onClick={() => { setShowNoteEdit(true); setShowNoteDeleteConfirm(false); }}
                             >
-                                Edit
+                                {t('common.edit')}
                             </button>
                             <button
                                 className="glass-btn px-4 py-3 text-xs font-bold text-red-600"
                                 onClick={() => { setShowNoteDeleteConfirm(true); setShowNoteEdit(false); }}
                             >
-                                Delete
+                                {t('common.delete')}
                             </button>
                         </div>
                         {noteError && (
@@ -897,19 +900,19 @@ export default function App() {
                                 <input
                                     value={noteDraftDate}
                                     onChange={(e) => setNoteDraftDate(e.target.value)}
-                                    placeholder="YYYY-MM-DD"
+                                    placeholder={t('stories.date_placeholder')}
                                     className="glass-card-sm w-full px-3 py-3 text-xs font-bold outline-none"
                                 />
                                 <textarea
                                     value={noteDraftThought}
                                     onChange={(e) => setNoteDraftThought(e.target.value)}
-                                    placeholder="Thought"
+                                    placeholder={t('stories.thought_placeholder')}
                                     className="glass-card-sm w-full px-3 py-3 text-xs font-bold outline-none min-h-[110px]"
                                 />
                                 <textarea
                                     value={noteDraftQuote}
                                     onChange={(e) => setNoteDraftQuote(e.target.value)}
-                                    placeholder="Quote"
+                                    placeholder={t('stories.quote_placeholder')}
                                     className="glass-card-sm w-full px-3 py-3 text-xs font-bold outline-none min-h-[90px]"
                                 />
                                 <button
@@ -928,17 +931,17 @@ export default function App() {
                                             setManageNote(next);
                                             setShowNoteManage(false);
                                         } catch (e) {
-                                            setNoteError(e instanceof Error ? e.message : '保存失败');
+                                            setNoteError(e instanceof Error ? e.message : t('common.error'));
                                         }
                                     }}
                                 >
-                                    Save
+                                    {t('common.save')}
                                 </button>
                             </div>
                         )}
                         {showNoteDeleteConfirm && (
                             <div className="mt-4 space-y-3">
-                                <div className="text-xs opacity-70">此操作不可撤销。</div>
+                                <div className="text-xs opacity-70">{t('stories.delete_confirm_extra')}</div>
                                 <button
                                     className="glass-btn primary w-full py-3 text-xs font-bold bg-red-500/90"
                                     onClick={async () => {
@@ -948,11 +951,11 @@ export default function App() {
                                             await removeNote(manageNote.id);
                                             setShowNoteManage(false);
                                         } catch (e) {
-                                            setNoteError(e instanceof Error ? e.message : '删除失败');
+                                            setNoteError(e instanceof Error ? e.message : t('common.error'));
                                         }
                                     }}
                                 >
-                                    Confirm Delete
+                                    {t('stories.confirm_delete')}
                                 </button>
                             </div>
                         )}
@@ -973,7 +976,7 @@ export default function App() {
                                 autoFocus
                                 type="text"
                                 className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-lg font-bold placeholder:opacity-30 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
-                                placeholder="Search books, authors, or thoughts..."
+                                placeholder={t('common.search_placeholder')}
                                 value={searchQ}
                                 onChange={(e) => setSearchQ(e.target.value)}
                             />
@@ -996,7 +999,7 @@ export default function App() {
                                 return (
                                     <div className="flex flex-col items-center justify-center py-20 opacity-40">
                                         <Search size={48} className="mb-4" />
-                                        <p className="text-lg font-bold">No results found for "{searchQ}"</p>
+                                        <p className="text-lg font-bold">{t('common.no_results', { query: searchQ })}</p>
                                     </div>
                                 );
                             }
@@ -1005,7 +1008,7 @@ export default function App() {
                                 <div className="space-y-8">
                                     {filteredBooks.length > 0 && (
                                         <section>
-                                            <h3 className="text-xs font-black opacity-40 uppercase tracking-widest mb-4 ml-1">Books ({filteredBooks.length})</h3>
+                                            <h3 className="text-xs font-black opacity-40 uppercase tracking-widest mb-4 ml-1">{t('common.books')} ({filteredBooks.length})</h3>
                                             <div className="grid grid-cols-1 gap-3">
                                                 {filteredBooks.map(b => (
                                                     <button 
@@ -1034,7 +1037,7 @@ export default function App() {
                                     
                                     {filteredNotes.length > 0 && (
                                         <section>
-                                            <h3 className="text-xs font-black opacity-40 uppercase tracking-widest mb-4 ml-1">Thoughts ({filteredNotes.length})</h3>
+                                            <h3 className="text-xs font-black opacity-40 uppercase tracking-widest mb-4 ml-1">{t('common.thoughts')} ({filteredNotes.length})</h3>
                                             <div className="grid grid-cols-1 gap-3">
                                                 {filteredNotes.map(n => {
                                                     const book = books.find(b => b.id === n.bookId);
@@ -1054,7 +1057,7 @@ export default function App() {
                                                                 <div className="w-5 h-5 rounded bg-white/5 flex items-center justify-center text-[8px] font-black">
                                                                     {book?.title?.charAt(0) || '?'}
                                                                 </div>
-                                                                <div className="text-[10px] font-black opacity-40 truncate">{book?.title ?? 'Unknown Book'}</div>
+                                                                <div className="text-[10px] font-black opacity-40 truncate">{book?.title ?? t('common.unknown_book')}</div>
                                                             </div>
                                                             <p className="text-xs leading-relaxed line-clamp-2 opacity-80 mb-2 italic">"{n.quote}"</p>
                                                             <p className="text-xs font-bold leading-relaxed line-clamp-2">{n.thought}</p>
@@ -1102,6 +1105,7 @@ const Bookshelf: React.FC<{
     onConfirmCreateFolder?: () => void;
     onCancelCreateFolder?: () => void;
 }> = ({ books, folders, activeFolderId, onSetActiveFolder, onOpen, onImport, onManage, onCreateFolder, onDeleteFolder, onRenameFolder, onStartDeleteFolder, onStartRenameFolder, onSearch, onImportSample, showFolderCreate, folderDraftName, setFolderDraftName, onConfirmCreateFolder, onCancelCreateFolder }) => {
+    const { t } = useTranslation();
     const collectDescendants = (folderId: string): Set<string> => {
         const set = new Set<string>([folderId]);
         let changed = true;
@@ -1150,12 +1154,12 @@ const Bookshelf: React.FC<{
     return (
     <div className="animate-fade-in-up space-y-6">
         <header className="flex justify-between items-center mt-1">
-            <h1 className="text-3xl font-extrabold tracking-tight">Library</h1>
+            <h1 className="text-3xl font-extrabold tracking-tight">{t('shelf.title')}</h1>
             <div className="flex gap-3">
                 <button className="w-10 h-10 glass-btn rounded-full flex items-center justify-center" onClick={onSearch}>
                     <Search size={20} />
                 </button>
-                <button className="w-10 h-10 glass-btn primary rounded-full flex items-center justify-center" onClick={onImport} aria-label="Import book">
+                <button className="w-10 h-10 glass-btn primary rounded-full flex items-center justify-center" onClick={onImport} aria-label={t('shelf.import')}>
                     <Plus size={20} strokeWidth={3} />
                 </button>
             </div>
@@ -1165,10 +1169,10 @@ const Bookshelf: React.FC<{
             <button
                 className={`glass-btn px-4 py-2.5 flex items-center gap-2 shrink-0 transition-all ${showFolderCreate ? 'bg-blue-500/20 text-blue-500 border-blue-500/30 scale-105 shadow-lg shadow-blue-500/10' : 'bg-blue-500/10 text-blue-500 border-blue-500/20'}`}
                 onClick={onCreateFolder}
-                aria-label="Create Folder"
+                aria-label={t('shelf.new_folder')}
             >
                 <FolderPlus size={16} />
-                <span className="text-[10px] font-black uppercase tracking-widest">New Folder</span>
+                <span className="text-[10px] font-black uppercase tracking-widest">{t('shelf.new_folder')}</span>
             </button>
             <div className="w-px h-6 bg-white/10 mx-1 shrink-0" />
             
@@ -1176,7 +1180,7 @@ const Bookshelf: React.FC<{
                 className={`glass-btn px-5 py-2.5 text-[11px] font-bold whitespace-nowrap transition-all ${activeFolderId === 'uncategorized' ? 'bg-blue-500/20 text-blue-500 border-blue-500/30 scale-105 shadow-[0_8px_32px_rgba(59,130,246,0.2)] backdrop-blur-md ring-1 ring-blue-500/20' : 'opacity-70 hover:opacity-100'}`}
                 onClick={() => onSetActiveFolder('uncategorized')}
             >
-                Inbox ({uncategorizedBooks.length})
+                {t('shelf.inbox')} ({uncategorizedBooks.length})
             </button>
 
             {folders.filter(f => !f.parentId).map(f => (
@@ -1193,7 +1197,7 @@ const Bookshelf: React.FC<{
         {activeFolder && (
             <div className="flex items-center justify-between px-1 -mb-2">
                 <div className="flex items-center gap-2">
-                    <div className="text-[10px] font-black opacity-40 uppercase tracking-[0.2em]">Folder: {activeFolder.name}</div>
+                    <div className="text-[10px] font-black opacity-40 uppercase tracking-[0.2em]">{t('shelf.folder_label')} {activeFolder.name}</div>
                     <button 
                         className="w-8 h-8 glass-btn flex items-center justify-center bg-blue-500/10 text-blue-500 border-blue-500/30 shadow-lg shadow-blue-500/5 backdrop-blur-sm hover:bg-blue-500/20 transition-all"
                         onClick={() => onStartRenameFolder(activeFolder)}
@@ -1205,18 +1209,18 @@ const Bookshelf: React.FC<{
                     className="glass-btn px-4 py-1.5 text-[10px] font-black uppercase tracking-widest text-red-500 bg-red-500/10 border-red-500/30 shadow-[0_4px_16px_rgba(239,68,68,0.15)] backdrop-blur-md ring-1 ring-red-500/20 hover:bg-red-500/20 transition-all scale-100 hover:scale-105"
                     onClick={() => onStartDeleteFolder(activeFolder)}
                 >
-                    Delete Folder
+                    {t('shelf.delete_folder')}
                 </button>
             </div>
         )}
 
         {showFolderCreate && setFolderDraftName && onConfirmCreateFolder && onCancelCreateFolder && (
             <div className="space-y-3 p-4 glass-card-sm border-dashed border-2 border-blue-500/20 bg-blue-500/5 animate-fade-in-up">
-                <div className="text-[10px] font-black opacity-40 uppercase tracking-widest mb-1">New Folder Name</div>
+                <div className="text-[10px] font-black opacity-40 uppercase tracking-widest mb-1">{t('shelf.new_folder_name')}</div>
                 <input
                     value={folderDraftName}
                     onChange={(e) => setFolderDraftName(e.target.value)}
-                    placeholder="e.g. Psychology, History..."
+                    placeholder={t('shelf.folder_placeholder')}
                     className="glass-card-sm w-full px-4 py-3 text-xs font-bold outline-none border-white/10 focus:border-blue-500/30 transition-colors bg-white/5"
                     autoFocus
                 />
@@ -1225,13 +1229,13 @@ const Bookshelf: React.FC<{
                         className="glass-btn flex-1 py-3 text-[10px] font-black uppercase tracking-widest opacity-60 hover:opacity-100"
                         onClick={onCancelCreateFolder}
                     >
-                        Cancel
+                        {t('common.cancel')}
                     </button>
                     <button
                         className="glass-btn flex-1 py-3 text-[10px] font-black uppercase tracking-widest text-blue-500 bg-blue-500/10 border-blue-500/30 shadow-lg shadow-blue-500/20 hover:bg-blue-500/20 transition-all"
                         onClick={onConfirmCreateFolder}
                     >
-                        Create
+                        {t('common.confirm')}
                     </button>
                 </div>
             </div>
@@ -1240,7 +1244,7 @@ const Bookshelf: React.FC<{
         {/* Recently Read */}
         {continueBook && (
         <div>
-            <h2 className="text-xs font-bold opacity-50 uppercase tracking-widest mb-3 pl-1">Continue</h2>
+            <h2 className="text-xs font-bold opacity-50 uppercase tracking-widest mb-3 pl-1">{t('shelf.continue')}</h2>
             <div 
                 className="glass-card p-0 flex flex-col cursor-pointer group relative overflow-hidden h-[250px]"
                 onClick={() => onOpen(continueBook)}
@@ -1277,14 +1281,14 @@ const Bookshelf: React.FC<{
         )}
 
         <div>
-            <h2 className="text-xs font-bold opacity-50 uppercase tracking-widest mb-3 pl-1">Shelf</h2>
+            <h2 className="text-xs font-bold opacity-50 uppercase tracking-widest mb-3 pl-1">{t('shelf.shelf_label')}</h2>
             <div className="grid grid-cols-2 gap-3">
                 {visibleBooks.map(book => (
                     <div key={book.id} className="glass-card-sm p-4 cursor-pointer group flex flex-col items-center text-center gap-3 relative" onClick={() => onOpen(book)}>
                         <button
                             className="absolute top-2 right-2 w-8 h-8 glass-btn rounded-full flex items-center justify-center opacity-60 hover:opacity-100"
                             onClick={(e) => { e.stopPropagation(); onManage(book); }}
-                            aria-label="Manage book"
+                            aria-label={t('shelf.manage_book')}
                         >
                             <MoreHorizontal size={16} />
                         </button>
@@ -1300,7 +1304,7 @@ const Bookshelf: React.FC<{
                     <div className="w-12 h-12 rounded-full bg-[var(--glass-highlight)] flex items-center justify-center opacity-60 group-hover:opacity-100 transition-colors shadow-sm">
                         <Plus size={24} />
                     </div>
-                    <span className="text-xs font-bold opacity-40 group-hover:opacity-100">Add Book</span>
+                    <span className="text-xs font-bold opacity-40 group-hover:opacity-100">{t('shelf.add_book')}</span>
                 </div>
             </div>
         </div>
@@ -1308,8 +1312,8 @@ const Bookshelf: React.FC<{
         {activeFolderId === 'uncategorized' && (
             <div className="space-y-4 pt-4 border-t border-white/5">
                 <div className="flex items-center gap-2 px-1">
-                    <h2 className="text-xs font-bold opacity-50 uppercase tracking-widest">Recommended Samples</h2>
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 border border-blue-500/20">UNIMPORTED</span>
+                    <h2 className="text-xs font-bold opacity-50 uppercase tracking-widest">{t('shelf.recommended_samples')}</h2>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 border border-blue-500/20">{t('shelf.unimported')}</span>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                     {MOCK_BOOKS.map(sample => {
@@ -1338,11 +1342,13 @@ const Bookshelf: React.FC<{
     );
 };
 
-const StoriesView: React.FC<{ notes: UserNote[]; books: Book[]; onManageNote: (n: UserNote) => void; onExport: () => void }> = ({ notes, books, onManageNote, onExport }) => (
+const StoriesView: React.FC<{ notes: UserNote[]; books: Book[]; onManageNote: (n: UserNote) => void; onExport: () => void }> = ({ notes, books, onManageNote, onExport }) => {
+    const { t } = useTranslation();
+    return (
     <div className="animate-fade-in-up space-y-6">
         <header className="flex justify-between items-center mt-1">
-            <h1 className="text-3xl font-extrabold tracking-tight">Thoughts</h1>
-            <button className="glass-btn px-5 py-2 text-xs font-bold" onClick={onExport}>Export .txt</button>
+            <h1 className="text-3xl font-extrabold tracking-tight">{t('stories.title')}</h1>
+            <button className="glass-btn px-5 py-2 text-xs font-bold" onClick={onExport}>{t('stories.export_txt')}</button>
         </header>
 
         {notes.length === 0 ? (
@@ -1350,8 +1356,8 @@ const StoriesView: React.FC<{ notes: UserNote[]; books: Book[]; onManageNote: (n
                 <div className="w-20 h-20 bg-gradient-to-br from-white/50 to-transparent rounded-2xl flex items-center justify-center mb-5 shadow-sm transform rotate-12 border border-white/20">
                     <BookOpen size={28} />
                 </div>
-                <p className="font-bold text-base">Your mind is clear.</p>
-                <p className="text-xs opacity-60 mt-1">Highlights will appear here.</p>
+                <p className="font-bold text-base">{t('stories.no_notes')}</p>
+                <p className="text-xs opacity-60 mt-1">{t('stories.no_notes_subtitle')}</p>
             </div>
         ) : (
             <div className="grid grid-cols-1 gap-3">
@@ -1364,7 +1370,7 @@ const StoriesView: React.FC<{ notes: UserNote[]; books: Book[]; onManageNote: (n
                                     {books.find(b => b.id === note.bookId)?.title ?? note.bookId}
                                 </span>
                             </div>
-                            <button className="opacity-40 hover:opacity-100" onClick={() => onManageNote(note)} aria-label="Manage thought">
+                            <button className="opacity-40 hover:opacity-100" onClick={() => onManageNote(note)} aria-label={t('stories.manage_thought')}>
                                 <MoreHorizontal size={18} />
                             </button>
                         </div>
@@ -1377,7 +1383,8 @@ const StoriesView: React.FC<{ notes: UserNote[]; books: Book[]; onManageNote: (n
             </div>
         )}
     </div>
-);
+    );
+};
 
 const DiscoverView: React.FC<{ 
     books: Book[]; 
@@ -1387,6 +1394,7 @@ const DiscoverView: React.FC<{
     onSearch: () => void;
     onSwitchTab: (tab: 'Shelf' | 'Stories' | 'Discover' | 'Profile') => void;
 }> = ({ books, notes, onOpen, onImport, onSearch, onSwitchTab }) => {
+    const { t } = useTranslation();
     const progressOf = (b: Book) => storageAdapter.loadProgress(b.id) || b.progress || 0;
     const featured = books.length ? [...books].sort((a, b) => progressOf(b) - progressOf(a))[0] : null;
     const recentNotes = [...notes].sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 3);
@@ -1416,14 +1424,14 @@ const DiscoverView: React.FC<{
         <div className="animate-fade-in-up space-y-6 pb-20">
             <header className="mt-1 flex justify-between items-center">
                 <div className="flex flex-col">
-                    <h1 className="text-3xl font-extrabold tracking-tight">Discover</h1>
-                    <p className="text-[10px] font-bold opacity-40 uppercase tracking-widest mt-1">Explore your library</p>
+                    <h1 className="text-3xl font-extrabold tracking-tight">{t('tabs.discover')}</h1>
+                    <p className="text-[10px] font-bold opacity-40 uppercase tracking-widest mt-1">{t('discover.subtitle')}</p>
                 </div>
                 <div className="flex gap-2">
-                    <button className="w-10 h-10 glass-btn rounded-full flex items-center justify-center" onClick={onSearch} aria-label="Search">
+                    <button className="w-10 h-10 glass-btn rounded-full flex items-center justify-center" onClick={onSearch} aria-label={t('common.search')}>
                         <Search size={20} />
                     </button>
-                    <button className="w-10 h-10 glass-btn primary rounded-full flex items-center justify-center" onClick={onImport} aria-label="Import">
+                    <button className="w-10 h-10 glass-btn primary rounded-full flex items-center justify-center" onClick={onImport} aria-label={t('shelf.import')}>
                         <Plus size={20} strokeWidth={3} />
                     </button>
                 </div>
@@ -1443,7 +1451,7 @@ const DiscoverView: React.FC<{
 
                 <div className="relative z-10">
                     <div className="flex items-center gap-2 mb-4">
-                        <span className="bg-blue-500/20 text-blue-400 backdrop-blur-md text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider border border-blue-500/20">Featured Reading</span>
+                        <span className="bg-blue-500/20 text-blue-400 backdrop-blur-md text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider border border-blue-500/20">{t('discover.featured_reading')}</span>
                     </div>
                     {featured ? (
                         <>
@@ -1451,12 +1459,12 @@ const DiscoverView: React.FC<{
                             <div className="flex items-center gap-3 mb-8">
                                 <p className="opacity-70 text-sm font-bold truncate max-w-[200px]">{featured.author}</p>
                                 <div className="w-1 h-1 rounded-full bg-white/20"></div>
-                                <p className="text-xs font-black text-blue-400">{progressOf(featured)}% Done</p>
+                                <p className="text-xs font-black text-blue-400">{t('discover.percent_done', { percent: progressOf(featured) })}</p>
                             </div>
                             <button className="glass-btn primary px-6 py-4 text-sm font-bold shadow-xl w-full flex justify-between items-center group-active:scale-95 transition-all" onClick={() => onOpen(featured)}>
                                 <span className="flex items-center gap-2">
                                     <Play size={16} fill="currentColor" />
-                                    Resume Reading
+                                    {t('discover.resume_reading')}
                                 </span>
                                 <div className="flex -space-x-2">
                                     {[1, 2, 3].map(i => (
@@ -1467,10 +1475,10 @@ const DiscoverView: React.FC<{
                         </>
                     ) : (
                         <>
-                            <h2 className="text-3xl font-extrabold mb-2 leading-tight drop-shadow-sm">Start your journey</h2>
-                            <p className="opacity-70 text-sm mb-6 max-w-[90%] font-medium">支持 EPUB / PDF / TXT，导入后开启你的阅读之旅。</p>
+                            <h2 className="text-3xl font-extrabold mb-2 leading-tight drop-shadow-sm">{t('discover.start_journey')}</h2>
+                            <p className="opacity-70 text-sm mb-6 max-w-[90%] font-medium">{t('import.description')}</p>
                             <button className="glass-btn primary px-6 py-3 text-sm font-bold shadow-xl w-full flex justify-between items-center group-active:scale-95 transition-transform" onClick={onImport}>
-                                <span>Import Book</span>
+                                <span>{t('shelf.import')}</span>
                                 <Plus size={18} strokeWidth={3} />
                             </button>
                         </>
@@ -1489,7 +1497,7 @@ const DiscoverView: React.FC<{
                     </div>
                     <div>
                         <div className="text-2xl font-black text-blue-500">{notes7d}</div>
-                        <div className="text-[10px] font-black opacity-40 uppercase tracking-[0.15em] mt-1">7D Thoughts</div>
+                        <div className="text-[10px] font-black opacity-40 uppercase tracking-[0.15em] mt-1">{t('discover.stats_7d')}</div>
                     </div>
                 </button>
                 <button 
@@ -1502,7 +1510,7 @@ const DiscoverView: React.FC<{
                     </div>
                     <div>
                         <div className="text-2xl font-black text-yellow-500">{avgProgress}%</div>
-                        <div className="text-[10px] font-black opacity-40 uppercase tracking-[0.15em] mt-1">Avg Progress</div>
+                        <div className="text-[10px] font-black opacity-40 uppercase tracking-[0.15em] mt-1">{t('discover.stats_avg')}</div>
                     </div>
                 </button>
             </div>
@@ -1514,7 +1522,7 @@ const DiscoverView: React.FC<{
                     </div>
                     <div className="flex items-center gap-2 mb-4">
                         <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
-                        <h3 className="text-[10px] font-black opacity-40 uppercase tracking-[0.2em]">Inspiration</h3>
+                        <h3 className="text-[10px] font-black opacity-40 uppercase tracking-[0.2em]">{t('discover.inspiration')}</h3>
                     </div>
                     <p className="text-lg font-bold leading-relaxed italic mb-4 line-clamp-3">"{randomNote.thought}"</p>
                     <div className="flex items-center justify-between">
@@ -1523,7 +1531,7 @@ const DiscoverView: React.FC<{
                                 {books.find(b => b.id === randomNote.bookId)?.title?.charAt(0) || '?'}
                             </div>
                             <span className="text-[10px] font-bold opacity-60">
-                                {books.find(b => b.id === randomNote.bookId)?.title || 'Unknown Source'}
+                                {books.find(b => b.id === randomNote.bookId)?.title || t('common.unknown_book')}
                             </span>
                         </div>
                         <button 
@@ -1533,7 +1541,7 @@ const DiscoverView: React.FC<{
                                 if (book) onOpen(book);
                             }}
                         >
-                            Open Book
+                            {t('discover.open_book')}
                         </button>
                     </div>
                 </div>
@@ -1543,12 +1551,12 @@ const DiscoverView: React.FC<{
                 <div>
                     <div className="flex items-center justify-between mb-4 px-1">
                         <div className="flex items-center gap-2">
-                            <h3 className="text-xs font-black opacity-40 uppercase tracking-[0.2em]">Jump Back In</h3>
+                            <h3 className="text-xs font-black opacity-40 uppercase tracking-[0.2em]">{t('discover.jump_back_in')}</h3>
                             <span className="w-1 h-1 rounded-full bg-white/20"></span>
-                            <span className="text-[10px] font-bold opacity-30">{books.length} Total</span>
+                            <span className="text-[10px] font-bold opacity-30">{books.length} {t('common.total')}</span>
                         </div>
                         <button className="text-[10px] font-black text-blue-500 uppercase tracking-widest hover:opacity-80 transition-opacity" onClick={() => onSwitchTab('Shelf')}>
-                            Shelf ›
+                            {t('tabs.shelf')} ›
                         </button>
                     </div>
                     <div className="flex gap-4 overflow-x-auto no-scrollbar pb-4 -mx-1 px-1">
@@ -1574,7 +1582,7 @@ const DiscoverView: React.FC<{
                                 </div>
                                 <div className="space-y-0.5">
                                     <div className="text-[11px] font-black truncate group-hover:text-blue-500 transition-colors">{b.title}</div>
-                                    <div className="text-[9px] font-bold opacity-40 uppercase tracking-tighter">{progressOf(b)}% Complete</div>
+                                    <div className="text-[9px] font-bold opacity-40 uppercase tracking-tighter">{t('discover.percent_done', { percent: progressOf(b) })}</div>
                                 </div>
                             </div>
                         ))}
@@ -1585,17 +1593,17 @@ const DiscoverView: React.FC<{
             <div className="glass-card p-6 bg-gradient-to-b from-transparent to-[var(--glass-highlight)]/5">
                 <div className="flex items-center justify-between mb-6">
                     <div className="flex flex-col">
-                        <h3 className="text-sm font-black opacity-80 tracking-tight">Recent Thoughts</h3>
-                        <p className="text-[10px] font-bold opacity-40 uppercase tracking-widest mt-0.5">From your highlights</p>
+                        <h3 className="text-sm font-black opacity-80 tracking-tight">{t('discover.recent_thoughts')}</h3>
+                        <p className="text-[10px] font-bold opacity-40 uppercase tracking-widest mt-0.5">{t('discover.recent_thoughts_subtitle')}</p>
                     </div>
                     <button className="glass-btn px-4 py-2 text-[10px] font-black uppercase tracking-widest opacity-60 hover:opacity-100 hover:bg-[var(--glass-highlight)] transition-all" onClick={() => onSwitchTab('Stories')}>
-                        All
+                        {t('common.all')}
                     </button>
                 </div>
                 {recentNotes.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-10 opacity-40 border-2 border-dashed border-white/5 rounded-2xl">
                         <Edit3 size={32} className="mb-2" />
-                        <p className="text-xs font-bold">No thoughts yet</p>
+                        <p className="text-xs font-bold">{t('stories.no_notes')}</p>
                     </div>
                 ) : (
                     <div className="space-y-4">
@@ -1652,6 +1660,7 @@ const ProfileView: React.FC<{
     }) => Promise<void>,
     onOpenBook: (b: Book) => void
 }> = ({ books, notes, profile, theme, onThemeChange, onUpdateProfile, onOpenBook }) => {
+    const { t, i18n } = useTranslation();
     const [isEditing, setIsEditing] = useState(false);
     const [editName, setEditName] = useState(profile?.name ?? '');
     const [editBio, setEditBio] = useState(profile?.bio ?? '');
@@ -1687,10 +1696,14 @@ const ProfileView: React.FC<{
         setShowGoals(false);
     };
 
+    const changeLanguage = (lng: string) => {
+        i18n.changeLanguage(lng);
+    };
+
     return (
         <div className="animate-fade-in-up space-y-6">
             <header className="flex justify-between items-center mt-1">
-                 <h1 className="text-3xl font-extrabold tracking-tight">Profile</h1>
+                 <h1 className="text-3xl font-extrabold tracking-tight">{t('profile.title')}</h1>
                  <button 
                     className={`w-10 h-10 glass-btn rounded-full flex items-center justify-center transition-colors ${isEditing ? 'bg-[var(--text-main)] text-[var(--text-inverse)]' : ''}`}
                     onClick={() => {
@@ -1723,13 +1736,13 @@ const ProfileView: React.FC<{
                                 value={editName}
                                 onChange={e => setEditName(e.target.value)}
                                 className="w-full bg-[var(--glass-highlight)] px-3 py-1.5 rounded-lg text-sm font-bold outline-none"
-                                placeholder="Name"
+                                placeholder={t('profile.name')}
                             />
                             <input 
                                 value={editBio}
                                 onChange={e => setEditBio(e.target.value)}
                                 className="w-full bg-[var(--glass-highlight)] px-3 py-1.5 rounded-lg text-xs font-medium outline-none"
-                                placeholder="Bio"
+                                placeholder={t('profile.bio')}
                             />
                         </div>
                     ) : (
@@ -1737,55 +1750,75 @@ const ProfileView: React.FC<{
                             <h2 className="text-xl font-bold truncate">{profile?.name || 'Loading...'}</h2>
                             <p className="text-sm opacity-50 font-medium truncate">{profile?.bio || 'Bibliophile'}</p>
                             <div className="mt-2 inline-block bg-[var(--text-main)] border border-white/10 text-[var(--text-inverse)] px-2 py-0.5 rounded-full text-[10px] font-bold">
-                                Level {Math.floor(totalProgress / 50) + 1}
+                                {t('profile.level')} {Math.floor(totalProgress / 50) + 1}
                             </div>
                         </>
                     )}
                 </div>
             </div>
 
-            {/* --- Theme Selector Card --- */}
-            <div className="glass-card p-5">
-                <h3 className="text-sm font-bold opacity-60 uppercase tracking-widest mb-4">Appearance</h3>
-                <div className="flex gap-4">
-                    <ThemeOption 
-                        active={theme === 'white'} 
-                        label="White" 
-                        icon={<Sun size={18} />} 
-                        onClick={() => onThemeChange('white')}
-                        bg="bg-white text-black"
-                    />
-                    <ThemeOption 
-                        active={theme === 'gray'} 
-                        label="Gray" 
-                        icon={<Smartphone size={18} />} 
-                        onClick={() => onThemeChange('gray')}
-                        bg="bg-gray-200 text-gray-800"
-                    />
-                    <ThemeOption 
-                        active={theme === 'dark'} 
-                        label="Dark" 
-                        icon={<Moon size={18} />} 
-                        onClick={() => onThemeChange('dark')}
-                        bg="bg-gray-900 text-white"
-                    />
+            {/* --- Theme & Language Card --- */}
+            <div className="glass-card p-5 space-y-6">
+                <div>
+                    <h3 className="text-sm font-bold opacity-60 uppercase tracking-widest mb-4">{t('profile.appearance')}</h3>
+                    <div className="flex gap-4">
+                        <ThemeOption 
+                            active={theme === 'white'} 
+                            label={t('profile.white')} 
+                            icon={<Sun size={18} />} 
+                            onClick={() => onThemeChange('white')}
+                            bg="bg-white text-black"
+                        />
+                        <ThemeOption 
+                            active={theme === 'gray'} 
+                            label={t('profile.gray')} 
+                            icon={<Smartphone size={18} />} 
+                            onClick={() => onThemeChange('gray')}
+                            bg="bg-gray-200 text-gray-800"
+                        />
+                        <ThemeOption 
+                            active={theme === 'dark'} 
+                            label={t('profile.dark')} 
+                            icon={<Moon size={18} />} 
+                            onClick={() => onThemeChange('dark')}
+                            bg="bg-gray-900 text-white"
+                        />
+                    </div>
+                </div>
+
+                <div>
+                    <h3 className="text-sm font-bold opacity-60 uppercase tracking-widest mb-4">{t('profile.language')}</h3>
+                    <div className="flex gap-4">
+                        <button 
+                            className={`flex-1 py-3 glass-btn text-xs font-bold transition-all ${i18n.language === 'zh' ? 'bg-[var(--text-main)] text-[var(--text-inverse)]' : 'opacity-60 hover:opacity-100'}`}
+                            onClick={() => changeLanguage('zh')}
+                        >
+                            中文
+                        </button>
+                        <button 
+                            className={`flex-1 py-3 glass-btn text-xs font-bold transition-all ${i18n.language === 'en' ? 'bg-[var(--text-main)] text-[var(--text-inverse)]' : 'opacity-60 hover:opacity-100'}`}
+                            onClick={() => changeLanguage('en')}
+                        >
+                            English
+                        </button>
+                    </div>
                 </div>
             </div>
 
             <div className="grid grid-cols-3 gap-3">
-                <StatsCard value={estHours.toString()} label="Hours" />
-                <StatsCard value={books.length.toString()} label="Books" />
-                <StatsCard value={notes.length.toString()} label="Thoughts" />
+                <StatsCard value={estHours.toString()} label={t('profile.stats_hours')} />
+                <StatsCard value={books.length.toString()} label={t('profile.stats_books')} />
+                <StatsCard value={notes.length.toString()} label={t('profile.stats_thoughts')} />
             </div>
 
             <div className="space-y-2">
-                <ProfileMenuItem icon={<LibraryIcon size={20} />} label="Reading Goals" onClick={() => {
+                <ProfileMenuItem icon={<LibraryIcon size={20} />} label={t('profile.reading_goals')} onClick={() => {
                     setEditYearlyGoal(profile?.yearly_goal ?? 12);
                     setEditMonthlyGoal(profile?.monthly_goal ?? 2);
                     setShowGoals(true);
                 }} />
-                <ProfileMenuItem icon={<Share size={20} />} label="Share Profile" onClick={() => setShowShare(true)} />
-                <ProfileMenuItem icon={<Heart size={20} />} label="Favorites" onClick={() => setShowFavorites(true)} />
+                <ProfileMenuItem icon={<Share size={20} />} label={t('profile.share_profile')} onClick={() => setShowShare(true)} />
+                <ProfileMenuItem icon={<Heart size={20} />} label={t('profile.favorites')} onClick={() => setShowFavorites(true)} />
             </div>
 
             {/* --- Reading Goals Modal --- */}
@@ -1794,13 +1827,13 @@ const ProfileView: React.FC<{
                     <div className="absolute inset-0 bg-black/20" onClick={() => setShowGoals(false)} />
                     <div className="relative glass-modal w-full max-w-[420px] p-6 animate-fade-in-up">
                         <div className="flex items-center justify-between mb-6">
-                            <h2 className="text-lg font-extrabold">Reading Goals</h2>
+                            <h2 className="text-lg font-extrabold">{t('profile.reading_goals')}</h2>
                             <button className="w-8 h-8 glass-btn rounded-full flex items-center justify-center" onClick={() => setShowGoals(false)}>✕</button>
                         </div>
                         <div className="space-y-6">
                             <div className="glass-card-sm p-4">
                                 <div className="flex justify-between items-center mb-4">
-                                    <span className="text-xs font-bold opacity-60 uppercase">Yearly Progress</span>
+                                    <span className="text-xs font-bold opacity-60 uppercase">{t('profile.yearly_progress')}</span>
                                     <div className="flex items-center gap-3">
                                         <button className="w-6 h-6 glass-btn rounded-full flex items-center justify-center text-xs" onClick={() => setEditYearlyGoal(Math.max(1, editYearlyGoal - 1))}>-</button>
                                         <span className="text-sm font-black w-12 text-center">{books.length} / {editYearlyGoal}</span>
@@ -1813,10 +1846,10 @@ const ProfileView: React.FC<{
                             </div>
                             <div className="glass-card-sm p-4">
                                 <div className="flex justify-between items-center mb-4">
-                                    <span className="text-xs font-bold opacity-60 uppercase">Monthly Goal</span>
+                                    <span className="text-xs font-bold opacity-60 uppercase">{t('profile.monthly_goal')}</span>
                                     <div className="flex items-center gap-3">
                                         <button className="w-6 h-6 glass-btn rounded-full flex items-center justify-center text-xs" onClick={() => setEditMonthlyGoal(Math.max(1, editMonthlyGoal - 1))}>-</button>
-                                        <span className="text-sm font-black w-12 text-center">{editMonthlyGoal} Books</span>
+                                        <span className="text-sm font-black w-12 text-center">{editMonthlyGoal} {t('profile.books_unit')}</span>
                                         <button className="w-6 h-6 glass-btn rounded-full flex items-center justify-center text-xs" onClick={() => setEditMonthlyGoal(editMonthlyGoal + 1)}>+</button>
                                     </div>
                                 </div>
@@ -1824,7 +1857,7 @@ const ProfileView: React.FC<{
                                     <div className="h-full bg-green-500 transition-all duration-1000" style={{ width: '50%' }}></div>
                                 </div>
                             </div>
-                            <button className="glass-btn primary w-full py-3 text-sm font-bold" onClick={handleSaveGoals}>Save Goals</button>
+                            <button className="glass-btn primary w-full py-3 text-sm font-bold" onClick={handleSaveGoals}>{t('profile.save_goals')}</button>
                         </div>
                     </div>
                 </div>
@@ -1837,8 +1870,8 @@ const ProfileView: React.FC<{
                     <div className="relative glass-modal w-full max-w-[420px] p-8 animate-fade-in-up">
                         <div className="flex justify-between items-start mb-6">
                             <div className="flex flex-col">
-                                <h2 className="text-xl font-black tracking-tight">Share Progress</h2>
-                                <p className="text-[10px] font-bold opacity-40 uppercase tracking-widest mt-1">Spread the knowledge</p>
+                                <h2 className="text-xl font-black tracking-tight">{t('profile.share_progress')}</h2>
+                                <p className="text-[10px] font-bold opacity-40 uppercase tracking-widest mt-1">{t('profile.share_subtitle')}</p>
                             </div>
                             <button className="w-8 h-8 glass-btn rounded-full flex items-center justify-center" onClick={() => setShowShare(false)}>✕</button>
                         </div>
@@ -1852,22 +1885,22 @@ const ProfileView: React.FC<{
                                     </div>
                                     <div>
                                         <div className="text-sm font-black">{profile?.name}</div>
-                                        <div className="text-[10px] font-bold opacity-40">Reading on DeepRead</div>
+                                        <div className="text-[10px] font-bold opacity-40">{t('profile.reading_on_deepread')}</div>
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-1">
-                                        <div className="text-xs font-black opacity-40 uppercase tracking-tighter">Books Read</div>
+                                        <div className="text-xs font-black opacity-40 uppercase tracking-tighter">{t('profile.books_read')}</div>
                                         <div className="text-xl font-black">{books.length}</div>
                                     </div>
                                     <div className="space-y-1">
-                                        <div className="text-xs font-black opacity-40 uppercase tracking-tighter">Thoughts</div>
+                                        <div className="text-xs font-black opacity-40 uppercase tracking-tighter">{t('profile.thoughts')}</div>
                                         <div className="text-xl font-black">{notes.length}</div>
                                     </div>
                                 </div>
                                 <div className="mt-4 pt-4 border-t border-white/5">
                                     <div className="text-[10px] font-bold opacity-60 italic leading-relaxed">
-                                        "Reading is to the mind what exercise is to the body."
+                                        {t('profile.share_quote')}
                                     </div>
                                 </div>
                             </div>
@@ -1877,23 +1910,23 @@ const ProfileView: React.FC<{
                             <button 
                                 className="glass-btn primary w-full py-4 text-sm font-bold flex items-center justify-center gap-2 shadow-xl shadow-blue-500/20"
                                 onClick={() => {
-                                    const text = `Check out my reading progress on DeepRead! I've read ${books.length} books and captured ${notes.length} thoughts. Join me in building a deep reading habit!`;
+                                    const text = t('profile.share_copy_text', { count: books.length, notes: notes.length });
                                     navigator.clipboard.writeText(text);
                                     setShowShare(false);
                                 }}
                             >
                                 <Copy size={16} />
-                                Copy Summary Text
+                                {t('profile.copy_summary')}
                             </button>
                             <button 
                                 className="glass-btn w-full py-4 text-sm font-bold opacity-60 flex items-center justify-center gap-2"
                                 onClick={() => {
                                     // In a real app, we could generate an image here
-                                    alert('Image sharing coming soon!');
+                                    alert(t('profile.coming_soon'));
                                 }}
                             >
                                 <Smartphone size={16} />
-                                Save as Image
+                                {t('profile.save_image')}
                             </button>
                         </div>
                     </div>
@@ -1907,8 +1940,8 @@ const ProfileView: React.FC<{
                     <div className="relative glass-modal w-full max-w-[420px] p-8 animate-fade-in-up">
                         <div className="flex justify-between items-start mb-8">
                             <div className="flex flex-col">
-                                <h2 className="text-xl font-black tracking-tight">Favorites</h2>
-                                <p className="text-[10px] font-bold opacity-40 uppercase tracking-widest mt-1">Your curated collection</p>
+                                <h2 className="text-xl font-black tracking-tight">{t('profile.favorites')}</h2>
+                                <p className="text-[10px] font-bold opacity-40 uppercase tracking-widest mt-1">{t('profile.favorites_subtitle')}</p>
                             </div>
                             <button className="w-8 h-8 glass-btn rounded-full flex items-center justify-center" onClick={() => setShowFavorites(false)}>✕</button>
                         </div>
@@ -1917,8 +1950,8 @@ const ProfileView: React.FC<{
                             {favoriteBooks.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center py-16 opacity-30 border-2 border-dashed border-white/5 rounded-3xl">
                                     <Heart size={40} className="mb-4" />
-                                    <p className="text-sm font-black">No favorites yet</p>
-                                    <p className="text-[10px] font-bold mt-1 uppercase tracking-widest">Add some from your library</p>
+                                    <p className="text-sm font-black">{t('profile.no_favorites')}</p>
+                                    <p className="text-[10px] font-bold mt-1 uppercase tracking-widest">{t('profile.add_from_library')}</p>
                                 </div>
                             ) : (
                                 favoriteBooks.map(b => (
@@ -1959,7 +1992,7 @@ const ProfileView: React.FC<{
                                                 e.stopPropagation();
                                                 toggleFavorite(b.id);
                                             }}
-                                            aria-label="Remove from favorites"
+                                            aria-label={t('profile.remove_favorite')}
                                         >
                                             <Heart size={16} fill="currentColor" />
                                         </button>
@@ -1972,7 +2005,7 @@ const ProfileView: React.FC<{
                             className="glass-btn w-full py-4 text-sm font-black mt-8 opacity-60 hover:opacity-100 transition-opacity uppercase tracking-widest"
                             onClick={() => setShowFavorites(false)}
                         >
-                            Close
+                            {t('common.close')}
                         </button>
                     </div>
                 </div>

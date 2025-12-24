@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Book, ThemeType, Highlight, UserNote, DrawingStroke, Annotation, BookChapter } from '../types';
 import { THEMES } from '../constants';
-import { ChevronLeft, List, ChevronRight, Copy, Highlighter, PenLine, Share2, Search, X, Pencil, Eraser, Trash2, ScrollText, BookOpen } from 'lucide-react';
+import { ChevronLeft, List, ChevronRight, Copy, Highlighter, PenLine, Share2, Search, X, Pencil, Eraser, Trash2, ScrollText, BookOpen, Settings } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { storageAdapter } from '../storageAdapter';
 
 interface ReaderProps {
@@ -14,6 +15,7 @@ interface ReaderProps {
 type ReaderMode = 'paged' | 'scroll';
 
 export const Reader: React.FC<ReaderProps> = ({ book, onClose, onSaveNote }) => {
+    const { t } = useTranslation();
     // Basic State
     const [theme, setTheme] = useState<ThemeType>(ThemeType.Gray);
     const [fontSize, setFontSize] = useState(18);
@@ -731,15 +733,15 @@ export const Reader: React.FC<ReaderProps> = ({ book, onClose, onSaveNote }) => 
                     <button 
                         onClick={() => setIsPencilMode(!isPencilMode)}
                         className={`p-2.5 rounded-full transition-all ${isPencilMode ? 'bg-[var(--text-main)] text-[var(--text-inverse)] shadow-xl' : 'hover:bg-black/5 text-current'}`}
-                        aria-label="Pencil"
-                        title="Pencil"
+                        aria-label={t('reader.pencil')}
+                        title={t('reader.pencil')}
                     >
                         <Pencil size={20} />
                     </button>
                     <button 
                         className="p-2.5 rounded-full hover:bg-black/5 text-current"
-                        aria-label="Chapters"
-                        title="Chapters"
+                        aria-label={t('reader.chapters')}
+                        title={t('reader.chapters')}
                         onClick={(e) => {
                             e.stopPropagation();
                             setShowChapterNav(v => !v);
@@ -764,11 +766,11 @@ export const Reader: React.FC<ReaderProps> = ({ book, onClose, onSaveNote }) => 
                         onClick={(e) => e.stopPropagation()}
                     >
                         <div className="flex items-center justify-between mb-3">
-                            <h2 className="text-base font-extrabold tracking-tight">Chapters</h2>
+                            <h2 className="text-base font-extrabold tracking-tight">{t('reader.chapters')}</h2>
                             <button
                                 className="w-9 h-9 glass-btn rounded-full flex items-center justify-center"
                                 onClick={() => setShowChapterNav(false)}
-                                aria-label="Close chapters"
+                                aria-label={t('reader.close_chapters')}
                             >
                                 <X size={18} />
                             </button>
@@ -835,8 +837,8 @@ export const Reader: React.FC<ReaderProps> = ({ book, onClose, onSaveNote }) => 
                                         onClick={(e) => { e.stopPropagation(); setIsErasing(false); setIsPencilMode(false); }} 
                                         onTouchStart={(e) => { e.stopPropagation(); setIsErasing(false); setIsPencilMode(false); }} 
                                         className="w-9 h-9 glass-btn rounded-full flex items-center justify-center text-current pointer-events-auto touch-manipulation"
-                                        title="退出"
-                                        aria-label="退出"
+                                        title={t('reader.exit')}
+                                        aria-label={t('reader.exit')}
                                     >
                                         <X size={18} />
                                     </button>
@@ -844,8 +846,8 @@ export const Reader: React.FC<ReaderProps> = ({ book, onClose, onSaveNote }) => 
                                         onClick={(e) => { e.stopPropagation(); setIsErasing(false); setNotebookMode(m => m === 'type' ? 'draw' : 'type'); }} 
                                         onTouchStart={(e) => { e.stopPropagation(); setIsErasing(false); setNotebookMode(m => m === 'type' ? 'draw' : 'type'); }} 
                                         className={`w-9 h-9 glass-btn rounded-full flex items-center justify-center text-current pointer-events-auto touch-manipulation ${notebookMode === 'draw' ? 'ring-2 ring-black/10' : ''}`}
-                                        title={notebookMode === 'draw' ? '手写输入' : '打字输入'}
-                                        aria-label={notebookMode === 'draw' ? '手写输入' : '打字输入'}
+                                        title={notebookMode === 'draw' ? t('reader.handwriting') : t('reader.typing')}
+                                        aria-label={notebookMode === 'draw' ? t('reader.handwriting') : t('reader.typing')}
                                     >
                                         {notebookMode === 'draw' ? <Pencil size={18} /> : <ScrollText size={18} />}
                                     </button>
@@ -853,8 +855,8 @@ export const Reader: React.FC<ReaderProps> = ({ book, onClose, onSaveNote }) => 
                                         onClick={(e) => { e.stopPropagation(); setNotebookMode('draw'); setIsErasing(v => !v); setEraserMode(m => m === 'region' ? 'stroke' : 'region'); }} 
                                         onTouchStart={(e) => { e.stopPropagation(); setNotebookMode('draw'); setIsErasing(v => !v); setEraserMode(m => m === 'region' ? 'stroke' : 'region'); }} 
                                         className={`w-9 h-9 glass-btn rounded-full flex items-center justify-center text-current pointer-events-auto touch-manipulation ${isErasing && notebookMode === 'draw' ? 'ring-2 ring-black/10' : ''}`}
-                                        title={eraserMode === 'region' ? '触碰区域擦除' : '整笔擦除'}
-                                        aria-label={eraserMode === 'region' ? '触碰区域擦除' : '整笔擦除'}
+                                        title={eraserMode === 'region' ? t('reader.region_eraser') : t('reader.stroke_eraser')}
+                                        aria-label={eraserMode === 'region' ? t('reader.region_eraser') : t('reader.stroke_eraser')}
                                     >
                                         <Eraser size={18} />
                                     </button>
@@ -869,7 +871,7 @@ export const Reader: React.FC<ReaderProps> = ({ book, onClose, onSaveNote }) => 
                                         onChange={(e) => { const t = e.target.value; setNotebookDraft(t); storageAdapter.saveNotebookDraft(book.id, t); }}
                                         readOnly={notebookMode === 'draw'}
                                         className={`w-full h-full bg-transparent outline-none text-sm leading-7 ${notebookMode === 'draw' ? 'pointer-events-none opacity-90' : ''}`}
-                                        placeholder="在此记录你的想法…"
+                                        placeholder={t('reader.notebook_placeholder')}
                                     />
                                 </div>
                                 <canvas
@@ -993,9 +995,9 @@ export const Reader: React.FC<ReaderProps> = ({ book, onClose, onSaveNote }) => 
                     onClick={(e) => e.stopPropagation()}
                 >
                     <div className="flex items-center w-full justify-between px-2 mb-2">
-                         <MenuButton icon={<Copy size={18} />} label="Copy" onClick={() => handleAction('copy')} />
-                         <MenuButton icon={<PenLine size={18} />} label="Note" onClick={handleCreateNote} />
-                         <MenuButton icon={<Search size={18} />} label="Search" onClick={() => handleAction('search')} />
+                         <MenuButton icon={<Copy size={18} />} label={t('reader.copy')} onClick={() => handleAction('copy')} />
+                         <MenuButton icon={<PenLine size={18} />} label={t('reader.note')} onClick={handleCreateNote} />
+                         <MenuButton icon={<Search size={18} />} label={t('reader.search')} onClick={() => handleAction('search')} />
                     </div>
                     
                     {/* Divider with liquid feel */}
@@ -1025,11 +1027,11 @@ export const Reader: React.FC<ReaderProps> = ({ book, onClose, onSaveNote }) => 
                         <ColorDot color="bg-red-400" onClick={() => handleUpdateHighlightColor('red')} />
                         <ColorDot color="bg-purple-400" onClick={() => handleUpdateHighlightColor('purple')} />
                         <div className="w-[1px] h-6 bg-black/10 mx-1"></div>
-                        <button onClick={removeColor} className="text-current p-2 hover:bg-black/5 rounded-full transition-colors" title="取消涂色">
+                        <button onClick={removeColor} className="text-current p-2 hover:bg-black/5 rounded-full transition-colors" title={t('reader.cancel_color')}>
                             <Eraser size={18} />
                         </button>
                         {activeHighlight?.noteId && (
-                            <button onClick={removeNoteFromHighlight} className="text-amber-500 hover:text-amber-600 p-2 hover:bg-black/5 rounded-full transition-colors" title="删除便签">
+                            <button onClick={removeNoteFromHighlight} className="text-amber-500 hover:text-amber-600 p-2 hover:bg-black/5 rounded-full transition-colors" title={t('reader.delete_note')}>
                                 <X size={18} />
                             </button>
                         )}
@@ -1051,11 +1053,11 @@ export const Reader: React.FC<ReaderProps> = ({ book, onClose, onSaveNote }) => 
                         <div className="flex items-center justify-between p-2 bg-black/5 rounded-2xl border border-white/20">
                             <div className="flex items-center gap-2 text-[var(--text-sec)] pl-2">
                                 {readerMode === 'paged' ? <BookOpen size={18} /> : <ScrollText size={18} />}
-                                <span className="text-xs font-bold">Mode</span>
+                                <span className="text-xs font-bold">{t('reader.mode')}</span>
                             </div>
                             <div className="flex bg-black/5 p-1 rounded-xl">
-                                <button onClick={() => setReaderMode('paged')} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${readerMode === 'paged' ? 'bg-[var(--text-main)] text-[var(--text-inverse)] shadow-sm' : 'text-[var(--text-sec)] hover:text-current'}`}>Paged</button>
-                                <button onClick={() => setReaderMode('scroll')} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${readerMode === 'scroll' ? 'bg-[var(--text-main)] text-[var(--text-inverse)] shadow-sm' : 'text-[var(--text-sec)] hover:text-current'}`}>Scroll</button>
+                                <button onClick={() => setReaderMode('paged')} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${readerMode === 'paged' ? 'bg-[var(--text-main)] text-[var(--text-inverse)] shadow-sm' : 'text-[var(--text-sec)] hover:text-current'}`}>{t('reader.paged')}</button>
+                                <button onClick={() => setReaderMode('scroll')} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${readerMode === 'scroll' ? 'bg-[var(--text-main)] text-[var(--text-inverse)] shadow-sm' : 'text-[var(--text-sec)] hover:text-current'}`}>{t('reader.scroll')}</button>
                             </div>
                         </div>
 
@@ -1079,14 +1081,14 @@ export const Reader: React.FC<ReaderProps> = ({ book, onClose, onSaveNote }) => 
                              <>
                                 <div className="text-[10px] font-bold opacity-40 w-10">{(currentPage / totalPages * 100).toFixed(0)}%</div>
                                 <div className="flex gap-6">
-                                    <button onClick={() => { prevPage(); }} className="text-xs font-bold opacity-60 hover:opacity-100 hover:scale-110 transition-all">Prev</button>
+                                    <button onClick={() => { prevPage(); }} className="text-xs font-bold opacity-60 hover:opacity-100 hover:scale-110 transition-all">{t('reader.prev')}</button>
                                     <button onClick={() => setShowSettings(true)} className="flex flex-col items-center gap-1 group"><span className="text-xs font-black bg-black/5 px-3 py-1.5 rounded-full group-hover:bg-[var(--text-main)] group-hover:text-[var(--text-inverse)] transition-all border border-black/5">Aa</span></button>
-                                    <button onClick={() => { nextPage(); }} className="text-xs font-bold opacity-60 hover:opacity-100 hover:scale-110 transition-all">Next</button>
+                                    <button onClick={() => { nextPage(); }} className="text-xs font-bold opacity-60 hover:opacity-100 hover:scale-110 transition-all">{t('reader.next')}</button>
                                 </div>
                              </>
                          ) : (
                              <>
-                                <div className="text-[10px] font-bold opacity-40 w-10">Scroll</div>
+                                <div className="text-[10px] font-bold opacity-40 w-10">{t('reader.scroll')}</div>
                                 <div className="flex justify-center flex-1">
                                     <button onClick={() => setShowSettings(true)} className="flex flex-col items-center gap-1 group"><span className="text-xs font-black bg-black/5 px-3 py-1.5 rounded-full group-hover:bg-[var(--text-main)] group-hover:text-[var(--text-inverse)] transition-all border border-black/5">Aa</span></button>
                                 </div>
@@ -1130,6 +1132,7 @@ const ThemeBtn: React.FC<{ type: ThemeType, current: ThemeType, onClick: (t: The
 );
 
 const StickyNote: React.FC<{text: string, onChange: (t: string) => void, onDelete: () => void}> = ({text, onChange, onDelete}) => {
+    const { t } = useTranslation();
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
     useEffect(() => {
@@ -1145,7 +1148,7 @@ const StickyNote: React.FC<{text: string, onChange: (t: string) => void, onDelet
                 <button 
                     onClick={onDelete} 
                     className="p-1.5 text-amber-900/20 hover:bg-red-100 hover:text-red-500 rounded-full transition-colors"
-                    title="Delete Note"
+                    title={t('reader.delete_sticky_note')}
                 >
                     <X size={14} strokeWidth={2.5} />
                 </button>
@@ -1153,7 +1156,7 @@ const StickyNote: React.FC<{text: string, onChange: (t: string) => void, onDelet
             <textarea
                 ref={textareaRef}
                 className="w-full bg-transparent resize-none outline-none text-sm leading-snug min-h-[6rem] overflow-hidden placeholder-amber-900/40 p-1 pr-6"
-                placeholder="Write your thought..."
+                placeholder={t('reader.write_thought')}
                 value={text}
                 onChange={(e) => onChange(e.target.value)}
                 onClick={(e) => e.stopPropagation()}
