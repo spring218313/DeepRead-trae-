@@ -2,9 +2,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Book, Tab, UserNote, Folder } from './types';
 import { Reader } from './components/Reader';
-import { BookOpen, Compass, User, Library as LibraryIcon, Search, Plus, MoreHorizontal, Share, Settings, Sparkles, TrendingUp, Heart, Play, Moon, Sun, Smartphone, FolderPlus, Edit3 } from 'lucide-react';
+import { BookOpen, Compass, User, Library as LibraryIcon, Search, Plus, MoreHorizontal, Share, Settings, Sparkles, TrendingUp, Heart, Play, Moon, Sun, Smartphone, FolderPlus, Edit3, ArrowLeft, ChevronRight, Inbox, Folder as FolderIcon, Copy } from 'lucide-react';
 import { storageAdapter } from './storageAdapter';
-import { importBookFromFile, listImportedBooks, ImportProgress, deleteImportedBook, patchImportedBook, listFolders, createFolder, deleteFolder, renameFolder } from './bookImport';
+import { importBookFromFile, listImportedBooks, ImportProgress, deleteImportedBook, patchImportedBook, listFolders, createFolder, deleteFolder, renameFolder, upsertImportedBook } from './bookImport';
 import { listUserNotes as listUserNoteRows, upsertUserNote as upsertUserNoteRow, deleteUserNote as deleteUserNoteRow } from './backend/services/userNotesDao';
 import { createDB } from './backend/lib/db';
 
