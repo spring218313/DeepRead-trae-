@@ -25,8 +25,7 @@
     "search_placeholder": "Search books, authors, or thoughts...",
     "no_results": "No results found for \"{{query}}\"",
     "books": "Books",
-    "thoughts": "Thoughts",
-    "unknown_book": "Unknown Book"
+    "thoughts": "Thoughts"
   },
   "shelf": {
     "title": "My Shelf",

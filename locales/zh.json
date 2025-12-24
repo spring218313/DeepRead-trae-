@@ -25,8 +25,7 @@
     "search_placeholder": "搜索书籍、作者或笔记...",
     "no_results": "未找到 \"{{query}}\" 的结果",
     "books": "书籍",
-    "thoughts": "思考",
-    "unknown_book": "未知书籍"
+    "thoughts": "思考"
   },
   "shelf": {
     "title": "我的书架",
