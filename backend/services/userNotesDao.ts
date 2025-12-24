@@ -17,3 +17,10 @@ export async function upsertUserNote(userId: string, note: UserNoteRow): Promise
     [note.id, userId, note.book_id, note.quote, note.thought, note.date, note.updated_at ?? now(), note.version ?? 1]
   )
 }
+
+export async function deleteUserNote(userId: string, noteId: string): Promise<void> {
+  await db.query(
+    'DELETE FROM user_notes WHERE user_id=$1 AND id=$2',
+    [userId, noteId]
+  )
+}

@@ -1,4 +1,5 @@
 import { Annotation, Highlight, UserNote, DrawingStroke, Book, BookChapter } from './types'
+import { upsertUserNote as upsertUserNoteRow, deleteUserNote as deleteUserNoteRow } from './backend/services/userNotesDao'
 
 const read = <T>(key: string, fallback: T): T => {
   try {
@@ -22,6 +23,7 @@ const nbStrokesKey = (bookId: string) => `dr_nb_strokes_${bookId}`
 const chKey = (bookId: string) => `dr_chapters_${bookId}`
 const chBackupKey = (bookId: string) => `dr_chapters_backup_${bookId}`
 const chBackupMetaKey = (bookId: string) => `dr_chapters_backup_meta_${bookId}`
+const defaultUserId = 'local'
 
 const isSimulatedChapterTitle = (title: string) => {
   const t = title.trim()
@@ -162,10 +164,25 @@ export const storageAdapter = {
     const idx = list.findIndex(x => x.id === note.id)
     if (idx >= 0) list[idx] = note; else list.unshift(note)
     write(notesKey, list)
+    try {
+      void upsertUserNoteRow(defaultUserId, {
+        id: note.id,
+        user_id: defaultUserId,
+        book_id: note.bookId,
+        quote: note.quote,
+        thought: note.thought,
+        date: note.date,
+        updated_at: new Date().toISOString(),
+        version: 1
+      })
+    } catch {}
   },
   deleteUserNote: (id: string) => {
     const list = read<UserNote[]>(notesKey, [])
     write(notesKey, list.filter(x => x.id !== id))
+    try {
+      void deleteUserNoteRow(defaultUserId, id)
+    } catch {}
   },
   loadNotebookDraft: (bookId: string): string => read<string>(nbDraftKey(bookId), ''),
   saveNotebookDraft: (bookId: string, text: string) => write(nbDraftKey(bookId), text),

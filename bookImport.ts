@@ -98,6 +98,15 @@ async function idbPutFolder(folder: Folder): Promise<void> {
   await withStore(FOLDER_STORE, 'readwrite', (store) => store.put(folder) as unknown as IDBRequest<void>)
 }
 
+async function idbGetFolder(folderId: string): Promise<Folder | null> {
+  const res = await withStore(FOLDER_STORE, 'readonly', (store) => store.get(folderId) as unknown as IDBRequest<Folder | undefined>)
+  return res ? (res as Folder) : null
+}
+
+async function idbDeleteFolder(folderId: string): Promise<void> {
+  await withStore(FOLDER_STORE, 'readwrite', (store) => store.delete(folderId) as unknown as IDBRequest<void>)
+}
+
 async function idbGetAllFolders(): Promise<Folder[]> {
   const res = await withStore(FOLDER_STORE, 'readonly', (store) => store.getAll() as unknown as IDBRequest<Folder[]>)
   return Array.isArray(res) ? res : []
@@ -285,7 +294,8 @@ function writeImportedBookToWebStorage(book: Book): void {
 
 export async function importBookFromFile(
   file: File,
-  onProgress: (p: ImportProgress) => void
+  onProgress: (p: ImportProgress) => void,
+  folderId?: string | null
 ): Promise<Book> {
   onProgress({ phase: 'validate', percent: 5, message: '校验格式' })
   const fmt = detectFormat(file)
@@ -306,7 +316,7 @@ export async function importBookFromFile(
     title: title || 'Untitled',
     author: fmt.toUpperCase(),
     coverColor: pickCoverColor(title || file.name),
-    folderId: null,
+    folderId: folderId ?? null,
     progress: 0,
     totalParams: content.length,
     content
@@ -406,6 +416,53 @@ export async function createFolder(name: string, parentId?: string | null): Prom
   const event = new Event('deepread-imported')
   window.dispatchEvent(event)
   return folder
+}
+
+export async function renameFolder(folderId: string, name: string): Promise<void> {
+  try {
+    const folder = await idbGetFolder(folderId)
+    if (folder) {
+      folder.name = name.trim() || 'Untitled'
+      await idbPutFolder(folder)
+    }
+  } catch {}
+  
+  if ('localStorage' in globalThis) {
+    const raw = localStorage.getItem('dr_folders')
+    if (raw) {
+      const list = JSON.parse(raw) as Folder[]
+      const next = list.map(f => f.id === folderId ? { ...f, name: name.trim() || 'Untitled' } : f)
+      localStorage.setItem('dr_folders', JSON.stringify(next))
+    }
+  }
+  
+  const event = new Event('deepread-imported')
+  window.dispatchEvent(event)
+}
+
+export async function deleteFolder(folderId: string): Promise<void> {
+  try {
+    await idbDeleteFolder(folderId)
+  } catch {}
+  if ('localStorage' in globalThis) {
+    const raw = localStorage.getItem('dr_folders')
+    if (raw) {
+      const list = JSON.parse(raw) as Folder[]
+      const next = list.filter(f => f.id !== folderId)
+      localStorage.setItem('dr_folders', JSON.stringify(next))
+    }
+  }
+
+  // Move books in this folder to Inbox
+  const books = await listImportedBooks()
+  for (const b of books) {
+    if (b.folderId === folderId) {
+      await patchImportedBook(b.id, { folderId: null })
+    }
+  }
+
+  const event = new Event('deepread-imported')
+  window.dispatchEvent(event)
 }
 
 export async function listImportedBooks(): Promise<Book[]> {
