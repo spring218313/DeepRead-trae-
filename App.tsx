@@ -85,8 +85,13 @@ export default function App() {
     const [showCoverManage, setShowCoverManage] = useState(false);
     const [showMoveManage, setShowMoveManage] = useState(false);
     const [showFolderCreate, setShowFolderCreate] = useState(false);
+    const [showFolderDeleteConfirm, setShowFolderDeleteConfirm] = useState(false);
+    const [folderToDelete, setFolderToDelete] = useState<Folder | null>(null);
+    const [showFolderRename, setShowFolderRename] = useState(false);
+    const [folderToRename, setFolderToRename] = useState<Folder | null>(null);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [folderDraftName, setFolderDraftName] = useState('');
+    const [renameDraftName, setRenameDraftName] = useState('');
     const [folderDraftParentId, setFolderDraftParentId] = useState<string | null>(null);
     const [coverDraftHex, setCoverDraftHex] = useState<string>('#3b82f6');
     const [coverDraftImage, setCoverDraftImage] = useState<string | null>(null);
@@ -389,6 +394,15 @@ export default function App() {
                             await renameFolder(id, name);
                             setFolders(prev => prev.map(f => f.id === id ? { ...f, name } : f));
                         }}
+                        onStartDeleteFolder={(f) => {
+                            setFolderToDelete(f);
+                            setShowFolderDeleteConfirm(true);
+                        }}
+                        onStartRenameFolder={(f) => {
+                            setFolderToRename(f);
+                            setRenameDraftName(f.name);
+                            setShowFolderRename(true);
+                        }}
                         onSearch={openSearch}
                         showFolderCreate={showFolderCreate && !showBookManage}
                         folderDraftName={folderDraftName}
@@ -491,6 +505,86 @@ export default function App() {
                                 {importError}
                             </div>
                         )}
+                    </div>
+                </div>
+            )}
+
+            {/* Folder Delete Confirmation Modal */}
+            {showFolderDeleteConfirm && folderToDelete && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-5">
+                    <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowFolderDeleteConfirm(false)} />
+                    <div className="relative glass-modal w-full max-w-[320px] p-6 animate-fade-in text-center">
+                        <h2 className="text-lg font-black mb-2">Delete Folder?</h2>
+                        <p className="text-sm opacity-60 mb-6">
+                            Are you sure you want to delete <span className="font-bold text-[var(--text-main)]">"{folderToDelete.name}"</span>? 
+                            The books inside will be moved to Uncategorized.
+                        </p>
+                        <div className="flex gap-3">
+                            <button 
+                                onClick={() => setShowFolderDeleteConfirm(false)}
+                                className="flex-1 py-3 glass-btn text-xs font-black uppercase tracking-widest opacity-60 hover:opacity-100"
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                onClick={async () => {
+                                    await handleDeleteFolder(folderToDelete.id);
+                                    setShowFolderDeleteConfirm(false);
+                                    setFolderToDelete(null);
+                                }}
+                                className="flex-1 py-3 glass-btn text-xs font-black uppercase tracking-widest text-red-500 bg-red-500/10 border-red-500/20 hover:bg-red-500/20"
+                            >
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Folder Rename Modal */}
+            {showFolderRename && folderToRename && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-5">
+                    <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowFolderRename(false)} />
+                    <div className="relative glass-modal w-full max-w-[320px] p-6 animate-fade-in">
+                        <h2 className="text-lg font-black mb-4 text-center">Rename Folder</h2>
+                        <input 
+                            type="text"
+                            value={renameDraftName}
+                            onChange={(e) => setRenameDraftName(e.target.value)}
+                            placeholder="Folder Name"
+                            className="w-full bg-black/5 border-none rounded-xl px-4 py-3 text-sm font-bold mb-6 focus:ring-2 focus:ring-blue-500/20 outline-none text-[var(--text-main)]"
+                            autoFocus
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && renameDraftName.trim()) {
+                                    (async () => {
+                                        await renameFolder(folderToRename.id, renameDraftName.trim());
+                                        setFolders(prev => prev.map(f => f.id === folderToRename.id ? { ...f, name: renameDraftName.trim() } : f));
+                                        setShowFolderRename(false);
+                                        setFolderToRename(null);
+                                    })();
+                                }
+                            }}
+                        />
+                        <div className="flex gap-3">
+                            <button 
+                                onClick={() => setShowFolderRename(false)}
+                                className="flex-1 py-3 glass-btn text-xs font-black uppercase tracking-widest opacity-60 hover:opacity-100"
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                onClick={async () => {
+                                    if (!renameDraftName.trim()) return;
+                                    await renameFolder(folderToRename.id, renameDraftName.trim());
+                                    setFolders(prev => prev.map(f => f.id === folderToRename.id ? { ...f, name: renameDraftName.trim() } : f));
+                                    setShowFolderRename(false);
+                                    setFolderToRename(null);
+                                }}
+                                className="flex-1 py-3 glass-btn text-xs font-black uppercase tracking-widest text-blue-500 bg-blue-500/10 border-blue-500/20 hover:bg-blue-500/20"
+                            >
+                                Save
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -998,6 +1092,8 @@ const Bookshelf: React.FC<{
     onCreateFolder: () => void;
     onDeleteFolder: (id: string) => void;
     onRenameFolder: (id: string, name: string) => void;
+    onStartDeleteFolder: (folder: Folder) => void;
+    onStartRenameFolder: (folder: Folder) => void;
     onSearch: () => void;
     onImportSample: (b: Book) => void;
     showFolderCreate?: boolean;
@@ -1005,7 +1101,7 @@ const Bookshelf: React.FC<{
     setFolderDraftName?: (val: string) => void;
     onConfirmCreateFolder?: () => void;
     onCancelCreateFolder?: () => void;
-}> = ({ books, folders, activeFolderId, onSetActiveFolder, onOpen, onImport, onManage, onCreateFolder, onDeleteFolder, onRenameFolder, onSearch, onImportSample, showFolderCreate, folderDraftName, setFolderDraftName, onConfirmCreateFolder, onCancelCreateFolder }) => {
+}> = ({ books, folders, activeFolderId, onSetActiveFolder, onOpen, onImport, onManage, onCreateFolder, onDeleteFolder, onRenameFolder, onStartDeleteFolder, onStartRenameFolder, onSearch, onImportSample, showFolderCreate, folderDraftName, setFolderDraftName, onConfirmCreateFolder, onCancelCreateFolder }) => {
     const collectDescendants = (folderId: string): Set<string> => {
         const set = new Set<string>([folderId]);
         let changed = true;
@@ -1067,7 +1163,7 @@ const Bookshelf: React.FC<{
 
         <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 items-center">
             <button
-                className="glass-btn px-4 py-2.5 flex items-center gap-2 shrink-0 bg-blue-500/10 text-blue-500 border-blue-500/20"
+                className={`glass-btn px-4 py-2.5 flex items-center gap-2 shrink-0 transition-all ${showFolderCreate ? 'bg-blue-500/20 text-blue-500 border-blue-500/30 scale-105 shadow-lg shadow-blue-500/10' : 'bg-blue-500/10 text-blue-500 border-blue-500/20'}`}
                 onClick={onCreateFolder}
                 aria-label="Create Folder"
             >
@@ -1077,7 +1173,7 @@ const Bookshelf: React.FC<{
             <div className="w-px h-6 bg-white/10 mx-1 shrink-0" />
             
             <button
-                className={`glass-btn px-5 py-2.5 text-[11px] font-bold whitespace-nowrap transition-all ${activeFolderId === 'uncategorized' ? 'bg-white/10 border-white/20 scale-105 shadow-[0_8px_32px_rgba(0,0,0,0.1)] backdrop-blur-md' : 'opacity-70 hover:opacity-100'}`}
+                className={`glass-btn px-5 py-2.5 text-[11px] font-bold whitespace-nowrap transition-all ${activeFolderId === 'uncategorized' ? 'bg-blue-500/20 text-blue-500 border-blue-500/30 scale-105 shadow-[0_8px_32px_rgba(59,130,246,0.2)] backdrop-blur-md ring-1 ring-blue-500/20' : 'opacity-70 hover:opacity-100'}`}
                 onClick={() => onSetActiveFolder('uncategorized')}
             >
                 Inbox ({uncategorizedBooks.length})
@@ -1086,16 +1182,12 @@ const Bookshelf: React.FC<{
             {folders.filter(f => !f.parentId).map(f => (
                 <button
                     key={f.id}
-                    className={`glass-btn px-5 py-2.5 text-[11px] font-bold whitespace-nowrap transition-all ${activeFolderId === f.id ? 'bg-white/10 border-white/20 scale-105 shadow-[0_8px_32px_rgba(0,0,0,0.1)] backdrop-blur-md' : 'opacity-70 hover:opacity-100'}`}
+                    className={`glass-btn px-5 py-2.5 text-[11px] font-bold whitespace-nowrap transition-all ${activeFolderId === f.id ? 'bg-blue-500/20 text-blue-500 border-blue-500/30 scale-105 shadow-[0_8px_32px_rgba(59,130,246,0.2)] backdrop-blur-md ring-1 ring-blue-500/20' : 'opacity-70 hover:opacity-100'}`}
                     onClick={() => onSetActiveFolder(f.id)}
                 >
                     {f.name}
                 </button>
             ))}
-            
-            {folders.length > 0 && (
-                <div className="text-[10px] font-bold opacity-40 px-2 uppercase tracking-widest">Select Folder</div>
-            )}
         </div>
 
         {activeFolder && (
@@ -1103,24 +1195,15 @@ const Bookshelf: React.FC<{
                 <div className="flex items-center gap-2">
                     <div className="text-[10px] font-black opacity-40 uppercase tracking-[0.2em]">Folder: {activeFolder.name}</div>
                     <button 
-                        className="p-1 opacity-40 hover:opacity-100 transition-opacity"
-                        onClick={() => {
-                            const next = prompt('Rename folder:', activeFolder.name);
-                            if (next && next.trim()) {
-                                onRenameFolder(activeFolder.id, next.trim());
-                            }
-                        }}
+                        className="w-8 h-8 glass-btn flex items-center justify-center bg-blue-500/10 text-blue-500 border-blue-500/30 shadow-lg shadow-blue-500/5 backdrop-blur-sm hover:bg-blue-500/20 transition-all"
+                        onClick={() => onStartRenameFolder(activeFolder)}
                     >
-                        <Edit3 size={10} />
+                        <Edit3 size={12} />
                     </button>
                 </div>
                 <button 
-                    className="text-[10px] font-bold text-red-500/60 hover:text-red-500 transition-colors"
-                    onClick={() => {
-                        if (confirm(`Delete folder "${activeFolder.name}"? Books will be moved to Inbox.`)) {
-                            onDeleteFolder(activeFolder.id);
-                        }
-                    }}
+                    className="glass-btn px-4 py-1.5 text-[10px] font-black uppercase tracking-widest text-red-500 bg-red-500/10 border-red-500/30 shadow-[0_4px_16px_rgba(239,68,68,0.15)] backdrop-blur-md ring-1 ring-red-500/20 hover:bg-red-500/20 transition-all scale-100 hover:scale-105"
+                    onClick={() => onStartDeleteFolder(activeFolder)}
                 >
                     Delete Folder
                 </button>
@@ -1145,7 +1228,7 @@ const Bookshelf: React.FC<{
                         Cancel
                     </button>
                     <button
-                        className="glass-btn primary flex-1 py-3 text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-500/20"
+                        className="glass-btn flex-1 py-3 text-[10px] font-black uppercase tracking-widest text-blue-500 bg-blue-500/10 border-blue-500/30 shadow-lg shadow-blue-500/20 hover:bg-blue-500/20 transition-all"
                         onClick={onConfirmCreateFolder}
                     >
                         Create
