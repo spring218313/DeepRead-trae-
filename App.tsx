@@ -1747,8 +1747,8 @@ const ProfileView: React.FC<{
                         </div>
                     ) : (
                         <>
-                            <h2 className="text-xl font-bold truncate">{profile?.name || 'Loading...'}</h2>
-                            <p className="text-sm opacity-50 font-medium truncate">{profile?.bio || 'Bibliophile'}</p>
+                            <h2 className="text-xl font-bold truncate">{profile?.name || t('common.loading')}</h2>
+                            <p className="text-sm opacity-50 font-medium truncate">{profile?.bio || t('profile.default_bio')}</p>
                             <div className="mt-2 inline-block bg-[var(--text-main)] border border-white/10 text-[var(--text-inverse)] px-2 py-0.5 rounded-full text-[10px] font-bold">
                                 {t('profile.level')} {Math.floor(totalProgress / 50) + 1}
                             </div>

@@ -133,6 +133,7 @@
     "title": "个人中心",
     "name": "姓名",
     "bio": "个人简介",
+    "default_bio": "爱书之人",
     "level": "等级",
     "appearance": "外观",
     "white": "纯白",

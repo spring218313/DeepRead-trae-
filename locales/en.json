@@ -132,6 +132,7 @@
     "title": "Profile",
     "name": "Name",
     "bio": "Bio",
+    "default_bio": "Bibliophile",
     "level": "Level",
     "appearance": "Appearance",
     "white": "White",
