@@ -230,7 +230,9 @@ export default function App() {
         setImportProgress({ phase: 'select', percent: 0, message: t('import.select_phase') });
         setShowImport(true);
         queueMicrotask(() => {
-            (fileInputRef.current as any).__deepreadFolderId = folderId ?? null;
+            // If we are in "uncategorized" (Inbox), ensure folderId is null
+            const targetFolderId = folderId === 'uncategorized' ? null : folderId;
+            (fileInputRef.current as any).__deepreadFolderId = targetFolderId ?? null;
             fileInputRef.current?.click();
         });
     };
