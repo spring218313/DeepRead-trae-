@@ -28,6 +28,18 @@ CREATE TABLE IF NOT EXISTS highlights (
   version INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS user_profiles (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  initials TEXT NOT NULL,
+  bio TEXT NOT NULL,
+  favorite_book_ids JSONB NOT NULL,
+  yearly_goal INTEGER DEFAULT 12,
+  monthly_goal INTEGER DEFAULT 2,
+  language TEXT DEFAULT 'zh',
+  updated_at TIMESTAMPTZ NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_highlights_user_book_para ON highlights(user_id, book_id, paragraph_index);
 
 CREATE TABLE IF NOT EXISTS annotations (

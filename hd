@@ -63,6 +63,7 @@ DeepRead 后端模块项目结构与开发计划
     - `schemas.ts`（zod 验证）
     - `sync.ts`（版本与冲突策略：LWW）
   - `tests/`（单元与集成）
+
 五、同步与冲突策略
 - 模型：增量同步，客户端按实体携带 `updated_at, version`。
 - 策略：默认 LWW（更新时间晚者胜）；同段落重叠合并逻辑与前端保持一致（参考 `components/Reader.tsx:262-279`）。
@@ -78,22 +79,13 @@ DeepRead 后端模块项目结构与开发计划
 - 部署：Supabase Functions 或 CF Workers/Vercel。启用日志采集与错误告警。
 - 监控：请求量、错误率、同步延迟、备份体积。
 
-八、开发计划（2–4 周）
-- 第 0 周：准备
-  - 确认选型（优先 Supabase Edge Functions），建立仓库与环境变量。
-  - 定义 API 契约与 zod schema（与 `types.ts` 对齐）。
-- 第 1 周：核心接口与模型
-  - 建表与迁移：`books/book_content/highlights/annotations/user_notes/progress`。
-  - 实现 `highlights/annotations/progress` 的增删改查与 LWW。
-  - 单元测试与本地联调工具脚本。
-- 第 2 周：备份与搜索
-  - `backup.export/import` 实现与大数据分页。
-  - 书内搜索 FTS API。
-  - 基础限流与日志。
-- 第 3 周：安全与优化
-  - RLS/鉴权中间件完善，边缘函数与错误处理。
-  - 批量接口性能优化（分页、分片）。
-  - 文档与上线验收。
+八、开发计划
+- [x] 第一阶段：核心后端 API 实现 (Highlights, Annotations, Progress, User Notes)
+- [x] 第二阶段：数据库表结构与 FTS 搜索索引
+- [x] 第三阶段：基础认证与限流逻辑
+- [x] 第四阶段：备份/导入导出功能
+- [ ] 第五阶段：前端 storageAdapter 对接云端 API (待切换)
+- [ ] 第六阶段：多端同步冲突处理优化与上线验收
 
 九、验收标准
 - 契约一致：API 字段与 `types.ts` 完整映射。
@@ -104,63 +96,6 @@ DeepRead 后端模块项目结构与开发计划
 十、接入方式（保留前端不改动）
 - 创建新的 `storageAdapter` 云实现（仅作为后续替换目标），接口签名与当前一致：
   - `loadHighlights/saveHighlightsBulk/updateHighlightColor/deleteHighlight`
-  - `loadAnnotations/saveAnnotation/updateAnnotationText/deleteAnnotation/saveAnnotationsBulk`
-  - `loadProgress/saveProgress`
-  - `listUserNotes/upsertUserNote/deleteUserNote`
-  - `exportAll/importAll`
-- 当前不改代码，仅在后续通过配置或构建时切换适配器实现，实现与后端对接。
-
-十一、风险与缓解
-- 冲突与合并复杂：分批与版本比对，必要时服务端返回冲突列表供客户端提示。
-- 大文档迁移：内容分段与惰性加载，避免一次性拉取。
-- 延迟与失败：加入断点续传与重试；网络失败时不影响本地操作。
-
-计划
-
-一、总开发计划与进度
-- 阶段 0（第 0 周）：选型与契约冻结、项目结构与迁移草案
-- 阶段 1（第 1 周）：核心模型与接口（highlights/annotations/progress）与 LWW 同步
-- 阶段 2（第 2 周）：备份/导入与书内搜索（FTS），基础限流与日志
-- 阶段 3（第 3 周）：安全与优化（Auth/RLS/错误处理/批量分页），上线与验收
- - 当前总进度：已完成 阶段 0 的第 1 步（见下方步骤记录）
- - 距离完成剩余步骤：0
- - 当前进度：100%
-
-二、开发步骤记录（滚动追加）
-1) [完成] 选型与全局计划编制、API 契约与项目结构冻结
-   - 内容：在不改动前端的前提下，确定 Supabase Edge Functions + Postgres 为优先实现路径；补充 REST 契约、数据库表与索引、同步与冲突策略；明确后续 BFF 备选。
-   - 成果：本文件已包含契约、结构与开发计划；作为后续实现依据。
-2) [完成] 创建后端目录与接口骨架、初始 SQL 迁移与同步工具
-   - 内容：新增 `backend/` 目录，包含 `api/` 接口骨架、`schemas.ts` 类型、`lib/sync.ts` LWW 合并工具、`sql/001_init.sql` 初始表与索引。
-   - 成果：后端模块基础结构已建立，可据此实现具体数据访问与鉴权；不改动前端代码。
-3) [完成] 数据访问层与鉴权中间件骨架
-   - 内容：新增 `backend/lib/db.ts` 通用查询与时间工具、`backend/lib/auth.ts` 令牌校验上下文；为后续 API 接入数据库与鉴权做准备。
-   - 成果：奠定数据访问与鉴权基础，下一步将填充具体 SQL 与 RLS 校验逻辑。
-4) [完成] DAO 层实现并接入 API
-   - 内容：实现 `services/*Dao.ts` 的增删改查，接入 `api/*` 方法；涵盖高亮、批注、进度、用户笔记与备份骨架。
-   - 成果：API 已具备数据库访问与参数校验入口，下一步完善鉴权与RLS策略、备份与搜索。
-5) [完成] 备份与搜索接口骨架
-   - 内容：实现 `services/backupDao.ts` 与 `api/backup.ts` 的导入/导出；新增 `services/searchDao.ts` 与 `api/search.ts` 的 FTS 搜索；追加 `sql/002_fts.sql` 建索引。
-   - 成果：具备用户数据备份/恢复能力与书内全文搜索入口，下一步完善鉴权、RLS与限流日志并准备上线验收。
-6) [完成] 日志与限流中间件骨架
-   - 内容：新增 `backend/lib/logger.ts`、`backend/lib/rateLimit.ts` 与 `backend/lib/errors.ts`；提供基础请求日志、错误日志与简单的窗口限流工具。
-   - 成果：完善运维与安全基础，可在路由层集成日志与限流，准备上线验收。
-
-# 语言转化
-
-一、总开发计划与进度
-- 阶段 1：i18n 基础架构搭建（配置文件、语言包、默认语言设置）
-- 阶段 2：提取 UI 硬编码文本（App.tsx 与 Reader.tsx 等核心组件）
-- 阶段 3：语言切换功能实现（UI 交互、液态玻璃风格适配、状态管理）
-- 阶段 4：数据持久化与多语言适配完善（后端存储同步、真实数据对接）
- - 当前总进度：已完成 阶段 1 的第 2 步
- - 距离完成剩余步骤：2
- - 当前进度：50%
-
-二、开发步骤记录（滚动追加）
-1) [完成] 制定全局开发计划，初始化 i18n 基础架构
-   - 内容：在 hd 文件中建立语言转化专题，明确四个阶段的开发任务；配置 i18next，设置中文为默认语言。
-   - 成果：确立了清晰的开发路径，为后续文本提取和功能开发打下基础。
-2) [完成] 创建语言包并初始化 i18n
-   - 内容：创建 locales/zh.json 和 locales/en.json，包含基础 UI 翻译；创建 i18n.ts 并在 index.tsx 中引入，强制默认语言为中文。
-   - 成果：完成了多语言的基础配置，系统已具备切换语言的能力。
+  - `loadUserNotes/upsertUserNote/deleteUserNote`
+  - `saveProgress/loadProgress`
+- 切换点：在 `storageAdapter.ts` 中通过环境变量开关切换本地/云端模式。

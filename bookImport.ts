@@ -1,5 +1,6 @@
 import { Book, Folder } from './types'
 import { storageAdapter } from './storageAdapter'
+import i18n from './i18n'
 
 type ImportFormat = 'txt' | 'pdf' | 'epub'
 
@@ -151,13 +152,13 @@ async function validateEpub(file: File): Promise<void> {
   const isExt = name.endsWith('.epub')
   const isMime = file.type === 'application/epub+zip' || file.type === 'application/octet-stream' || file.type === ''
   if (!isExt && !isMime) {
-    throw new Error('EPUB格式校验失败：文件扩展名或类型不匹配')
+    throw new Error(i18n.t('import.error_epub_format'))
   }
   const head = await readFileArrayBuffer(file.slice(0, 4))
   const u8 = new Uint8Array(head)
   const isZip = u8[0] === 0x50 && u8[1] === 0x4b
   if (!isZip) {
-    throw new Error('EPUB格式校验失败：文件不是有效的ZIP容器')
+    throw new Error(i18n.t('import.error_epub_zip'))
   }
 }
 
@@ -172,19 +173,19 @@ function htmlToText(input: unknown): string {
 }
 
 async function parseTxt(file: File, onProgress: (p: ImportProgress) => void): Promise<string[]> {
-  onProgress({ phase: 'read', percent: 10, message: '读取TXT' })
+  onProgress({ phase: 'read', percent: 10, message: i18n.t('import.read_txt') })
   const text = await readFileText(file)
-  onProgress({ phase: 'parse', percent: 40, message: '解析TXT' })
+  onProgress({ phase: 'parse', percent: 40, message: i18n.t('import.parse_txt') })
   const blocks = text.split(/\r?\n\s*\r?\n/g)
   const paras = ensureNonEmptyParagraphs(blocks.length > 1 ? blocks : text.split(/\r?\n/g))
-  onProgress({ phase: 'parse', percent: 70, message: '整理段落' })
+  onProgress({ phase: 'parse', percent: 70, message: i18n.t('import.clean_paras') })
   return paras.length ? paras : ['']
 }
 
 async function parsePdf(file: File, onProgress: (p: ImportProgress) => void): Promise<string[]> {
-  onProgress({ phase: 'read', percent: 10, message: '读取PDF' })
+  onProgress({ phase: 'read', percent: 10, message: i18n.t('import.read_pdf') })
   const data = await readFileArrayBuffer(file)
-  onProgress({ phase: 'parse', percent: 25, message: '解析PDF' })
+  onProgress({ phase: 'parse', percent: 25, message: i18n.t('import.parse_pdf') })
 
   const pdfjs = await import('pdfjs-dist')
   const workerModule = await import('pdfjs-dist/build/pdf.worker?worker')
@@ -206,17 +207,17 @@ async function parsePdf(file: File, onProgress: (p: ImportProgress) => void): Pr
       .join(' ')
     pages.push(pageText.trim())
     const percent = 25 + Math.round((i / total) * 55)
-    onProgress({ phase: 'parse', percent, message: `解析PDF ${i}/${total}` })
+    onProgress({ phase: 'parse', percent, message: i18n.t('import.parse_pdf_progress', { current: i, total }) })
   }
   return ensureNonEmptyParagraphs(pages)
 }
 
 async function parseEpub(file: File, onProgress: (p: ImportProgress) => void): Promise<string[]> {
   try {
-    onProgress({ phase: 'read', percent: 10, message: '读取EPUB' })
+    onProgress({ phase: 'read', percent: 10, message: i18n.t('import.read_epub') })
     await validateEpub(file)
     const data = await readFileArrayBuffer(file)
-    onProgress({ phase: 'parse', percent: 25, message: '解析EPUB' })
+    onProgress({ phase: 'parse', percent: 25, message: i18n.t('import.parse_epub') })
 
     const epubjs = await import('epubjs')
     const ePub = (epubjs as any).default ?? epubjs
@@ -228,7 +229,7 @@ async function parseEpub(file: File, onProgress: (p: ImportProgress) => void): P
       if (typeof book?.open === 'function') {
         book.open(data, 'binary')
       } else {
-        throw new Error('初始化解析器失败')
+        throw new Error(i18n.t('import.error_epub_init'))
       }
     }
     await book.ready
@@ -246,22 +247,22 @@ async function parseEpub(file: File, onProgress: (p: ImportProgress) => void): P
         try {
           doc = await item.load(book.load)
         } catch {
-          throw e instanceof Error ? e : new Error('章节加载失败')
+          throw e instanceof Error ? e : new Error(i18n.t('import.error_epub_chapter'))
         }
       }
       const text = htmlToText(doc)
       if (text) out.push(text)
       try { item.unload() } catch {}
       const percent = 25 + Math.round(((i + 1) / total) * 55)
-      onProgress({ phase: 'parse', percent, message: `解析EPUB ${i + 1}/${total}` })
+      onProgress({ phase: 'parse', percent, message: i18n.t('import.parse_epub_progress', { current: i + 1, total }) })
     }
 
     const paras = ensureNonEmptyParagraphs(out)
-    if (!paras.length) throw new Error('未解析到有效正文内容')
+    if (!paras.length) throw new Error(i18n.t('import.error_epub_content'))
     return paras
   } catch (e) {
-    const msg = e instanceof Error ? e.message : '未知错误'
-    throw new Error(`EPUB解析失败：${msg}`)
+    const msg = e instanceof Error ? e.message : i18n.t('common.unknown_error')
+    throw new Error(i18n.t('import.error_epub_fail', { message: msg }))
   }
 }
 
@@ -297,10 +298,10 @@ export async function importBookFromFile(
   onProgress: (p: ImportProgress) => void,
   folderId?: string | null
 ): Promise<Book> {
-  onProgress({ phase: 'validate', percent: 5, message: '校验格式' })
+  onProgress({ phase: 'validate', percent: 5, message: i18n.t('import.validate_format') })
   const fmt = detectFormat(file)
   if (!fmt) {
-    throw new Error('不支持的文件格式，请选择 EPUB / PDF / TXT')
+    throw new Error(i18n.t('import.error_invalid_format'))
   }
 
   const title = file.name.replace(/\.(epub|pdf|txt)$/i, '')
@@ -310,10 +311,10 @@ export async function importBookFromFile(
   if (fmt === 'pdf') content = await parsePdf(file, onProgress)
   if (fmt === 'epub') content = await parseEpub(file, onProgress)
 
-  onProgress({ phase: 'store', percent: 90, message: '写入本地存储' })
+  onProgress({ phase: 'store', percent: 90, message: i18n.t('import.store_local') })
   const book: Book = {
     id: safeId(),
-    title: title || 'Untitled',
+    title: title || i18n.t('common.untitled'),
     author: fmt.toUpperCase(),
     coverColor: pickCoverColor(title || file.name),
     folderId: folderId ?? null,
@@ -331,7 +332,7 @@ export async function importBookFromFile(
     storageAdapter.ensureChapters(book)
   } catch {}
 
-  onProgress({ phase: 'done', percent: 100, message: '导入完成' })
+  onProgress({ phase: 'done', percent: 100, message: i18n.t('import.import_done') })
   return book
 }
 
@@ -399,7 +400,7 @@ export async function listFolders(): Promise<Folder[]> {
 export async function createFolder(name: string, parentId?: string | null): Promise<Folder> {
   const folder: Folder = {
     id: safeId(),
-    name: name.trim() || 'Untitled',
+    name: name.trim() || i18n.t('common.untitled'),
     parentId: parentId ?? null,
     createdAt: new Date().toISOString()
   }
@@ -422,7 +423,7 @@ export async function renameFolder(folderId: string, name: string): Promise<void
   try {
     const folder = await idbGetFolder(folderId)
     if (folder) {
-      folder.name = name.trim() || 'Untitled'
+      folder.name = name.trim() || i18n.t('common.untitled')
       await idbPutFolder(folder)
     }
   } catch {}
@@ -431,7 +432,7 @@ export async function renameFolder(folderId: string, name: string): Promise<void
     const raw = localStorage.getItem('dr_folders')
     if (raw) {
       const list = JSON.parse(raw) as Folder[]
-      const next = list.map(f => f.id === folderId ? { ...f, name: name.trim() || 'Untitled' } : f)
+      const next = list.map(f => f.id === folderId ? { ...f, name: name.trim() || i18n.t('common.untitled') } : f)
       localStorage.setItem('dr_folders', JSON.stringify(next))
     }
   }

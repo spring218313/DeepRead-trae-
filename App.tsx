@@ -27,12 +27,13 @@ type UserProfileRow = {
     favorite_book_ids: string[]; 
     yearly_goal?: number;
     monthly_goal?: number;
+    language?: string;
     updated_at: string;
 };
 
 async function getUserProfile(userId: string): Promise<UserProfileRow | null> {
     const res = await profileDb.query<UserProfileRow>(
-        'SELECT id,name,initials,bio,favorite_book_ids,yearly_goal,monthly_goal,updated_at FROM user_profiles WHERE id=$1 LIMIT 1',
+        'SELECT id,name,initials,bio,favorite_book_ids,yearly_goal,monthly_goal,language,updated_at FROM user_profiles WHERE id=$1 LIMIT 1',
         [userId]
     );
     const row = res.rows?.[0] as any;
@@ -45,6 +46,7 @@ async function getUserProfile(userId: string): Promise<UserProfileRow | null> {
         favorite_book_ids: Array.isArray(row.favorite_book_ids) ? row.favorite_book_ids.map(String) : [],
         yearly_goal: typeof row.yearly_goal === 'number' ? row.yearly_goal : 12,
         monthly_goal: typeof row.monthly_goal === 'number' ? row.monthly_goal : 2,
+        language: String(row.language ?? 'zh'),
         updated_at: String(row.updated_at ?? '')
     };
 }
@@ -58,6 +60,7 @@ async function upsertUserProfile(userId: string, patch: Partial<UserProfileRow>)
         favorite_book_ids: [] as string[],
         yearly_goal: 12,
         monthly_goal: 2,
+        language: 'zh',
         updated_at: ''
     };
     const next: UserProfileRow = {
@@ -67,14 +70,14 @@ async function upsertUserProfile(userId: string, patch: Partial<UserProfileRow>)
         updated_at: new Date().toISOString()
     };
     await profileDb.query(
-        'INSERT INTO user_profiles(id,name,initials,bio,favorite_book_ids,yearly_goal,monthly_goal,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',
-        [next.id, next.name, next.initials, next.bio, next.favorite_book_ids, next.yearly_goal, next.monthly_goal, next.updated_at]
+        'INSERT INTO user_profiles(id,name,initials,bio,favorite_book_ids,yearly_goal,monthly_goal,language,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+        [next.id, next.name, next.initials, next.bio, next.favorite_book_ids, next.yearly_goal, next.monthly_goal, next.language, next.updated_at]
     );
     return next;
 }
 
 export default function App() {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const [activeTab, setActiveTab] = useState<Tab>('Shelf');
     const [readingBook, setReadingBook] = useState<Book | null>(null);
     const [notes, setNotes] = useState<UserNote[]>([]);
@@ -118,6 +121,7 @@ export default function App() {
         favorite_book_ids: string[];
         yearly_goal: number;
         monthly_goal: number;
+        language?: string;
     } | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const coverFileInputRef = useRef<HTMLInputElement>(null);
@@ -136,10 +140,19 @@ export default function App() {
                     bio: p.bio, 
                     favorite_book_ids: p.favorite_book_ids || [],
                     yearly_goal: p.yearly_goal || 12,
-                    monthly_goal: p.monthly_goal || 2
+                    monthly_goal: p.monthly_goal || 2,
+                    language: p.language || 'zh'
                 });
             } else {
-                const initial = { name: 'Deep Reader', initials: 'DR', bio: 'Bibliophile', favorite_book_ids: [], yearly_goal: 12, monthly_goal: 2 };
+                const initial = { 
+                    name: t('common.loading'), 
+                    initials: 'DR', 
+                    bio: t('profile.default_bio'), 
+                    favorite_book_ids: [], 
+                    yearly_goal: 12, 
+                    monthly_goal: 2, 
+                    language: i18n.language || 'zh' 
+                };
                 setUserProfile(initial);
                 void upsertUserProfile(DEFAULT_USER_ID, initial);
             }
@@ -442,7 +455,8 @@ export default function App() {
                                 bio: updated.bio,
                                 favorite_book_ids: updated.favorite_book_ids || [],
                                 yearly_goal: updated.yearly_goal || 12,
-                                monthly_goal: updated.monthly_goal || 2
+                                monthly_goal: updated.monthly_goal || 2,
+                                language: updated.language || 'zh'
                             });
                         }}
                         onOpenBook={handleBookClick}
@@ -1072,7 +1086,7 @@ export default function App() {
                         })() : (
                             <div className="flex flex-col items-center justify-center py-20 opacity-20">
                                 <Search size={48} className="mb-4" />
-                                <p className="text-sm font-bold uppercase tracking-widest">Type to start searching</p>
+                                <p className="text-sm font-bold uppercase tracking-widest">{t('common.search_start')}</p>
                             </div>
                         )}
                     </div>
@@ -1330,7 +1344,7 @@ const Bookshelf: React.FC<{
                                     className="glass-btn px-4 py-1.5 text-[10px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-500 mt-1 hover:bg-blue-500 hover:text-white transition-all"
                                     onClick={() => onImportSample(sample)}
                                 >
-                                    Import
+                                    {t('shelf.import_sample')}
                                 </button>
                             </div>
                         );
@@ -1647,6 +1661,7 @@ const ProfileView: React.FC<{
         favorite_book_ids: string[];
         yearly_goal: number;
         monthly_goal: number;
+        language?: string;
     } | null,
     theme: AppTheme, 
     onThemeChange: (t: AppTheme) => void,
@@ -1657,6 +1672,7 @@ const ProfileView: React.FC<{
         favorite_book_ids?: string[];
         yearly_goal?: number;
         monthly_goal?: number;
+        language?: string;
     }) => Promise<void>,
     onOpenBook: (b: Book) => void
 }> = ({ books, notes, profile, theme, onThemeChange, onUpdateProfile, onOpenBook }) => {
@@ -1696,16 +1712,25 @@ const ProfileView: React.FC<{
         setShowGoals(false);
     };
 
-    const changeLanguage = (lng: string) => {
+    const changeLanguage = async (lng: string) => {
         i18n.changeLanguage(lng);
+        if (profile) {
+            await onUpdateProfile({ ...profile, language: lng });
+        }
     };
+
+    useEffect(() => {
+        if (profile?.language && profile.language !== i18n.language) {
+            i18n.changeLanguage(profile.language);
+        }
+    }, [profile?.language, i18n]);
 
     return (
         <div className="animate-fade-in-up space-y-6">
             <header className="flex justify-between items-center mt-1">
                  <h1 className="text-3xl font-extrabold tracking-tight">{t('profile.title')}</h1>
                  <button 
-                    className={`w-10 h-10 glass-btn rounded-full flex items-center justify-center transition-colors ${isEditing ? 'bg-[var(--text-main)] text-[var(--text-inverse)]' : ''}`}
+                    className={`w-10 h-10 glass-btn rounded-full flex items-center justify-center transition-colors ${isEditing ? 'bg-blue-500/20 text-blue-500 border-blue-500/30' : ''}`}
                     onClick={() => {
                         if (isEditing) {
                             onUpdateProfile({ 
@@ -1790,13 +1815,13 @@ const ProfileView: React.FC<{
                     <h3 className="text-sm font-bold opacity-60 uppercase tracking-widest mb-4">{t('profile.language')}</h3>
                     <div className="flex gap-4">
                         <button 
-                            className={`flex-1 py-3 glass-btn text-xs font-bold transition-all ${i18n.language === 'zh' ? 'bg-[var(--text-main)] text-[var(--text-inverse)]' : 'opacity-60 hover:opacity-100'}`}
+                            className={`flex-1 py-3 glass-btn text-xs font-bold transition-all ${i18n.language === 'zh' ? 'bg-blue-500/20 text-blue-500 border-blue-500/30' : 'opacity-60 hover:opacity-100'}`}
                             onClick={() => changeLanguage('zh')}
                         >
                             中文
                         </button>
                         <button 
-                            className={`flex-1 py-3 glass-btn text-xs font-bold transition-all ${i18n.language === 'en' ? 'bg-[var(--text-main)] text-[var(--text-inverse)]' : 'opacity-60 hover:opacity-100'}`}
+                            className={`flex-1 py-3 glass-btn text-xs font-bold transition-all ${i18n.language === 'en' ? 'bg-blue-500/20 text-blue-500 border-blue-500/30' : 'opacity-60 hover:opacity-100'}`}
                             onClick={() => changeLanguage('en')}
                         >
                             English
