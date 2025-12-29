@@ -285,12 +285,18 @@ function readImportedBooksFromWebStorage(): Book[] {
 
 function writeImportedBookToWebStorage(book: Book): void {
   if (!('localStorage' in globalThis)) return
-  const raw = JSON.stringify(book)
-  localStorage.setItem(`dr_imported_book_${book.id}`, raw)
-  const idxRaw = localStorage.getItem('dr_imported_books_index')
-  const idx = idxRaw ? (JSON.parse(idxRaw) as string[]) : []
-  if (!idx.includes(book.id)) idx.unshift(book.id)
-  localStorage.setItem('dr_imported_books_index', JSON.stringify(idx))
+  // Only store metadata in localStorage to avoid quota limits
+  const { content, ...metadata } = book
+  const raw = JSON.stringify(metadata)
+  try {
+    localStorage.setItem(`dr_imported_book_${book.id}`, raw)
+    const idxRaw = localStorage.getItem('dr_imported_books_index')
+    const idx = idxRaw ? (JSON.parse(idxRaw) as string[]) : []
+    if (!idx.includes(book.id)) idx.unshift(book.id)
+    localStorage.setItem('dr_imported_books_index', JSON.stringify(idx))
+  } catch (e) {
+    console.warn('Failed to save book metadata to localStorage:', e)
+  }
 }
 
 export async function importBookFromFile(
@@ -323,11 +329,16 @@ export async function importBookFromFile(
     content
   }
 
+  // Always prioritize IndexedDB for the full book data
   try {
     await idbPutBook(book)
-  } catch {}
+  } catch (e) {
+    console.error('Failed to save book to IndexedDB:', e)
+  }
 
+  // Save only metadata to localStorage as fallback/index
   writeImportedBookToWebStorage(book)
+  
   try {
     storageAdapter.ensureChapters(book)
   } catch {}
@@ -339,7 +350,9 @@ export async function importBookFromFile(
 export async function upsertImportedBook(next: Book): Promise<void> {
   try {
     await idbPutBook(next)
-  } catch {}
+  } catch (e) {
+    console.error('Failed to upsert book to IndexedDB:', e)
+  }
   writeImportedBookToWebStorage(next)
   const event = new Event('deepread-imported')
   window.dispatchEvent(event)
@@ -352,14 +365,18 @@ export async function patchImportedBook(bookId: string, patch: Partial<Book>): P
   } catch {
     current = null
   }
+  
   if (!current && 'localStorage' in globalThis) {
     const raw = localStorage.getItem(`dr_imported_book_${bookId}`)
     if (raw) {
       try {
         current = JSON.parse(raw) as Book
+        // If loaded from localStorage, it might be missing content.
+        // We should try to find it in IDB if it's missing.
       } catch {}
     }
   }
+  
   if (!current) return null
   const merged: Book = { ...current, ...patch, id: current.id }
   await upsertImportedBook(merged)
@@ -471,9 +488,36 @@ export async function listImportedBooks(): Promise<Book[]> {
   try {
     const remote = await idbGetAllBooks()
     const map = new Map<string, Book>()
-    ;[...remote, ...local].forEach(b => map.set(b.id, b))
+    
+    // Prioritize IndexedDB (remote) over localStorage (local)
+    // local version might only have metadata, remote has full content
+    local.forEach(b => map.set(b.id, b))
+    remote.forEach(b => {
+      const existing = map.get(b.id)
+      if (existing) {
+        // Merge IndexedDB content into local metadata if needed, 
+        // but usually IndexedDB should be the source of truth
+        map.set(b.id, { ...existing, ...b })
+      } else {
+        map.set(b.id, b)
+      }
+    })
+    
+    // Migration: If a book is only in localStorage, try to move it to IDB
+    for (const b of local) {
+      if (!remote.find(r => r.id === b.id) && b.content && b.content.length > 0) {
+        try {
+          await idbPutBook(b)
+          console.log(`Migrated book ${b.id} to IndexedDB`)
+        } catch (e) {
+          console.warn(`Failed to migrate book ${b.id} to IndexedDB`, e)
+        }
+      }
+    }
+
     return Array.from(map.values())
-  } catch {
+  } catch (e) {
+    console.error('Failed to list books from IndexedDB, falling back to localStorage:', e)
     return local
   }
 }
