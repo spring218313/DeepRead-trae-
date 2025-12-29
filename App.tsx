@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { App as CapApp } from '@capacitor/app';
 import { Book, Tab, UserNote, Folder } from './types';
 import { Reader } from './components/Reader';
 import { BookOpen, Compass, User, Library as LibraryIcon, Search, Plus, MoreHorizontal, Share, Settings, Sparkles, TrendingUp, Heart, Play, Moon, Sun, Smartphone, FolderPlus, Edit3, ArrowLeft, ChevronRight, Inbox, Folder as FolderIcon, Copy } from 'lucide-react';
@@ -98,6 +99,23 @@ export default function App() {
     const [folderDraftName, setFolderDraftName] = useState('');
     const [renameDraftName, setRenameDraftName] = useState('');
     const [folderDraftParentId, setFolderDraftParentId] = useState<string | null>(null);
+
+    // Handle Android Back Button
+    useEffect(() => {
+        const backHandler = CapApp.addListener('backButton', ({ canGoBack }) => {
+            if (readingBook) {
+                setReadingBook(null);
+            } else if (activeFolderId !== 'uncategorized' && activeFolderId !== null) {
+                setActiveFolderId('uncategorized');
+            } else {
+                CapApp.exitApp();
+            }
+        });
+
+        return () => {
+            backHandler.then(h => h.remove());
+        };
+    }, [readingBook, activeFolderId]);
     const [coverDraftHex, setCoverDraftHex] = useState<string>('#3b82f6');
     const [coverDraftImage, setCoverDraftImage] = useState<string | null>(null);
     const [manageError, setManageError] = useState<string | null>(null);
