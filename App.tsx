@@ -1766,6 +1766,28 @@ const ProfileView: React.FC<{
         }
     };
 
+    const totalXP = books.reduce((acc, b) => {
+        const progress = storageAdapter.loadProgress(b.id) || b.progress || 0;
+        return acc + (progress * 10) + (progress >= 100 ? 500 : 0);
+    }, 0) + (notes.length * 50);
+
+    const getLevelInfo = (xp: number) => {
+        const level = Math.floor((1 + Math.sqrt(1 + (4 * xp) / 500)) / 2) || 1;
+        const currentLevelXP = 500 * level * (level - 1);
+        const nextLevelXP = 500 * (level + 1) * level;
+        const progress = (xp - currentLevelXP) / (nextLevelXP - currentLevelXP);
+        return { level, progress, xp, nextLevelXP };
+    };
+
+    const levelInfo = getLevelInfo(totalXP);
+
+    const getRankTitle = (level: number) => {
+        if (level >= 10) return t('profile.rank_4');
+        if (level >= 7) return t('profile.rank_3');
+        if (level >= 4) return t('profile.rank_2');
+        return t('profile.rank_1');
+    };
+
     const totalProgress = books.reduce((acc, b) => acc + (storageAdapter.loadProgress(b.id) || b.progress || 0), 0);
     const estHours = Math.round(totalProgress / 10) || 0; 
     
@@ -1852,8 +1874,27 @@ const ProfileView: React.FC<{
                         <>
                             <h2 className="text-xl font-bold truncate">{profile?.name || t('common.loading')}</h2>
                             <p className="text-sm opacity-50 font-medium truncate">{profile?.bio || t('profile.default_bio')}</p>
-                            <div className="mt-2 inline-block bg-[var(--text-main)] border border-white/10 text-[var(--text-inverse)] px-2 py-0.5 rounded-full text-[10px] font-bold">
-                                {t('profile.level')} {Math.floor(totalProgress / 50) + 1}
+                            <div className="mt-3 space-y-2">
+                                <div className="flex items-center gap-2">
+                                    <div className="bg-[var(--text-main)] border border-white/10 text-[var(--text-inverse)] px-2 py-0.5 rounded-full text-[10px] font-bold">
+                                        {t('profile.level')} {levelInfo.level}
+                                    </div>
+                                    <span className="text-[10px] font-bold opacity-60 uppercase tracking-wider">
+                                        {getRankTitle(levelInfo.level)}
+                                    </span>
+                                </div>
+                                <div className="w-full max-w-[160px]">
+                                    <div className="flex justify-between items-center mb-1">
+                                        <span className="text-[9px] font-bold opacity-40 uppercase tracking-tighter">{t('profile.xp')} {Math.floor(totalXP)}</span>
+                                        <span className="text-[9px] font-bold opacity-40 uppercase tracking-tighter">{Math.floor(levelInfo.progress * 100)}%</span>
+                                    </div>
+                                    <div className="h-1.5 w-full bg-black/5 rounded-full overflow-hidden border border-white/5">
+                                        <div 
+                                            className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-1000" 
+                                            style={{ width: `${levelInfo.progress * 100}%` }}
+                                        ></div>
+                                    </div>
+                                </div>
                             </div>
                         </>
                     )}
@@ -1988,7 +2029,10 @@ const ProfileView: React.FC<{
                                     </div>
                                     <div>
                                         <div className="text-sm font-black">{profile?.name}</div>
-                                        <div className="text-[10px] font-bold opacity-40">{t('profile.reading_on_deepread')}</div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[9px] font-bold opacity-40 uppercase tracking-tighter">Lv. {levelInfo.level}</span>
+                                            <span className="text-[9px] font-bold opacity-40 uppercase tracking-tighter">{getRankTitle(levelInfo.level)}</span>
+                                        </div>
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
