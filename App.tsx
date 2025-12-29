@@ -2,6 +2,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { App as CapApp } from '@capacitor/app';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+import { toPng } from 'html-to-image';
 import { Book, Tab, UserNote, Folder } from './types';
 import { Reader } from './components/Reader';
 import { BookOpen, Compass, User, Library as LibraryIcon, Search, Plus, MoreHorizontal, Share, Settings, Sparkles, TrendingUp, Heart, Play, Moon, Sun, Smartphone, FolderPlus, Edit3, ArrowLeft, ChevronRight, Inbox, Folder as FolderIcon, Copy } from 'lucide-react';
@@ -1708,6 +1710,62 @@ const ProfileView: React.FC<{
     const [editYearlyGoal, setEditYearlyGoal] = useState(profile?.yearly_goal ?? 12);
     const [editMonthlyGoal, setEditMonthlyGoal] = useState(profile?.monthly_goal ?? 2);
 
+    const shareCardRef = useRef<HTMLDivElement>(null);
+
+    const handleSaveImage = async () => {
+        if (!shareCardRef.current) return;
+        
+        try {
+            const dataUrl = await toPng(shareCardRef.current, {
+                cacheBust: true,
+                backgroundColor: theme === 'dark' ? '#000000' : '#ffffff',
+                style: {
+                    borderRadius: '24px',
+                    margin: '0',
+                    padding: '24px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '20px',
+                },
+                pixelRatio: 3,
+            });
+
+            const fileName = `deepread-share-${Date.now()}.png`;
+
+            // Check if we are in a native environment
+            const isNative = (window as any).Capacitor?.isNativePlatform();
+
+            if (isNative) {
+                await Filesystem.writeFile({
+                    path: fileName,
+                    data: dataUrl.split(',')[1],
+                    directory: Directory.Cache, // Use Cache for temporary storage before potential sharing
+                });
+                // In a real app we might want to use the Share plugin here
+                // For now, let's try to save to Documents as requested
+                try {
+                    await Filesystem.writeFile({
+                        path: fileName,
+                        data: dataUrl.split(',')[1],
+                        directory: Directory.Documents,
+                    });
+                    alert(t('profile.image_saved_to_documents'));
+                } catch (err) {
+                    console.error('Filesystem save failed', err);
+                }
+            } else {
+                const link = document.createElement('a');
+                link.download = fileName;
+                link.href = dataUrl;
+                link.click();
+            }
+            setShowShare(false);
+        } catch (err) {
+            console.error('Failed to save image:', err);
+            alert(t('profile.save_image_failed'));
+        }
+    };
+
     const totalProgress = books.reduce((acc, b) => acc + (storageAdapter.loadProgress(b.id) || b.progress || 0), 0);
     const estHours = Math.round(totalProgress / 10) || 0; 
     
@@ -1899,7 +1957,7 @@ const ProfileView: React.FC<{
                                     </div>
                                 </div>
                                 <div className="h-2 w-full bg-black/5 rounded-full overflow-hidden">
-                                    <div className="h-full bg-green-500 transition-all duration-1000" style={{ width: '50%' }}></div>
+                                    <div className="h-full bg-green-500 transition-all duration-1000" style={{ width: `${Math.min(100, (totalProgress / (profile?.monthly_goal || 2)) * 100)}%` }}></div>
                                 </div>
                             </div>
                             <button className="glass-btn primary w-full py-3 text-sm font-bold" onClick={handleSaveGoals}>{t('profile.save_goals')}</button>
@@ -1921,7 +1979,7 @@ const ProfileView: React.FC<{
                             <button className="w-8 h-8 glass-btn rounded-full flex items-center justify-center" onClick={() => setShowShare(false)}>✕</button>
                         </div>
 
-                        <div className="glass-card p-6 mb-6 bg-gradient-to-br from-blue-500/10 to-purple-500/10 border border-white/10 relative overflow-hidden">
+                        <div ref={shareCardRef} className="glass-card p-6 mb-6 bg-gradient-to-br from-blue-500/10 to-purple-500/10 border border-white/10 relative overflow-hidden">
                             <div className="absolute -top-10 -right-10 w-32 h-32 bg-white/5 rounded-full blur-3xl"></div>
                             <div className="relative z-10">
                                 <div className="flex items-center gap-3 mb-4">
@@ -1965,10 +2023,7 @@ const ProfileView: React.FC<{
                             </button>
                             <button 
                                 className="glass-btn w-full py-4 text-sm font-bold opacity-60 flex items-center justify-center gap-2"
-                                onClick={() => {
-                                    // In a real app, we could generate an image here
-                                    alert(t('profile.coming_soon'));
-                                }}
+                                onClick={handleSaveImage}
                             >
                                 <Smartphone size={16} />
                                 {t('profile.save_image')}

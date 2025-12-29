@@ -183,6 +183,8 @@
     "copy_summary": "复制摘要文字",
     "coming_soon": "图片分享功能即将上线！",
     "save_image": "保存为图片",
+    "image_saved_to_documents": "图片已保存至文档目录",
+    "save_image_failed": "保存图片失败",
     "favorites_subtitle": "你的专属精选馆藏",
     "no_favorites": "暂无收藏",
     "add_from_library": "从你的书库中添加一些吧",
